@@ -1,0 +1,45 @@
+{
+  "name": "team3_miniproject",
+  "version": "1.0.0",
+  "description": "AI 부트캠프 팀 3의 미니 프로젝트 \"yojari\"입니다",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "dev:admin:main": "tsx src/admin/main/main.tsx",
+    "dev:admin:join": "tsx src/admin/join/join.tsx",
+    "dev:admin:sns": "tsx src/admin/sns/sns.tsx",
+    "dev:admin:truck": "tsx src/admin/truck/truck.tsx",
+    "dev:web:main": "tsx src/web/main/main.tsx",
+    "dev:web:join": "tsx src/web/join/join.tsx",
+    "dev:web:sns": "tsx src/web/sns/sns.tsx",
+    "dev:web:truck": "tsx src/web/truck/truck.tsx",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rice4020/AI_Bootcamp_team3_miniProject.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rice4020/AI_Bootcamp_team3_miniProject/issues"
+  },
+  "homepage": "https://github.com/rice4020/AI_Bootcamp_team3_miniProject#readme",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@types/node": "^26.1.0",
+    "dotenv": "^17.4.2",
+    "next": "^14.2.35",
+    "pg": "^8.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.22.5",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17"
+  }
+}

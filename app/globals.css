@@ -1,0 +1,155 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* Dribbble 스타일의 프리미엄 라이트 테마 컬러 팔레트 */
+  --primary: #FF5A1F;        /* 생기 넘치는 네온 오렌지 (식욕 자극, 트렌디) */
+  --primary-rgb: 255, 90, 31;
+  --secondary: #2D3436;      /* 차콜 그레이 (서브 컬러) */
+  --accent: #FFC048;         /* 식욕을 돋우는 머스타드 옐로우 */
+  --success: #10B981;        /* 싱그러운 에메랄드 그린 (영업중) */
+  --warning: #F59E0B;        /* 따뜻한 오렌지 옐로우 (준비중) */
+  --danger: #EF4444;         /* 경고 레드 (소진 / 탈퇴 / 취소) */
+  
+  /* 라이트 테마 배경 및 표면 */
+  --background: #FAFAFC;     /* 눈이 편안한 미색 화이트 */
+  --surface: #FFFFFF;        /* 카드 및 패널 순백색 배경 */
+  --surface-rgb: 255, 255, 255;
+  --surface-light: #F3F3F7;  /* 연한 그레이 서피스 */
+  --border: rgba(0, 0, 0, 0.06); /* 부드러운 얇은 경계선 */
+  --border-light: rgba(0, 0, 0, 0.12);
+  
+  /* 텍스트 색상 (시인성 극대화) */
+  --text-primary: #1A1A24;   /* 가독성을 완벽 보장하는 다크 흑갈색 */
+  --text-secondary: #5E5E6E; /* 부드러운 서브 다크그레이 */
+  --text-muted: #8A8A9E;     /* 덜 중요한 마스킹 텍스트 */
+  
+  /* 타이포그래피 */
+  --font-ko: 'Noto Sans KR', sans-serif;
+  --font-en: 'Outfit', sans-serif;
+  
+  /* Dribbble 스타일 뽀송한 입체 그림자 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.08), 0 1px 5px rgba(0, 0, 0, 0.03);
+  --shadow-neon: 0 0 15px rgba(255, 90, 31, 0.2);
+  --shadow-success: 0 0 15px rgba(16, 185, 129, 0.25);
+  
+  /* 밀크 글라스모피즘 스타일 */
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-blur: blur(20px);
+  --glass-border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* 기본 리셋 및 글로벌 스타일 */
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-ko);
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  background-color: var(--background);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  font-family: var(--font-ko);
+}
+
+input, textarea, select {
+  font-family: var(--font-ko);
+}
+
+/* 스크롤바 커스텀 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-light);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* 네온 마커 및 맥박(Pulse) 애니메이션 */
+@keyframes neonPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(var(--primary-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0);
+  }
+}
+
+.pulse-marker-primary {
+  animation: neonPulse 2s infinite;
+}
+
+@keyframes successPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(0, 184, 148, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 184, 148, 0);
+  }
+}
+
+.pulse-marker-success {
+  animation: successPulse 2s infinite;
+}
+
+/* 글라스모피즘 스타일 공통 클래스 */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel-hover:hover {
+  background: rgba(19, 19, 36, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+@import url('./components.css');
+

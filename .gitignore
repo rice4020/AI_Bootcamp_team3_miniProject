@@ -1,0 +1,23 @@
+#폴더
+.agent/
+node_modules/
+.next/
+out/
+build/
+
+
+#파일
+agents.md
+AGENTS.md
+npm-debug.log
+.env.development.local
+.env.test.local
+.env.production.local
+.env
+.env.local
+
+# OS 임시 파일
+Thumbs.db
+Ehthumbs.db
+Desktop.ini
+*.DS_Store
