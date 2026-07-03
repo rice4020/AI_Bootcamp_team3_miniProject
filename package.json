@@ -1,0 +1,28 @@
+{
+  "name": "team3_miniproject",
+  "version": "1.0.0",
+  "description": "AI 부트캠프 팀 3의 미니 프로젝트 \"yojari\"입니다",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rice4020/AI_Bootcamp_team3_miniProject.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/rice4020/AI_Bootcamp_team3_miniProject/issues"
+  },
+  "homepage": "https://github.com/rice4020/AI_Bootcamp_team3_miniProject#readme",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@types/node": "^26.1.0",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.5",
+    "typescript": "^6.0.3"
+  }
+}
