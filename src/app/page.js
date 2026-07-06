@@ -426,31 +426,41 @@ export default function UserMainPage() {
     }
   };
 
-  // 4. 네이버 지도 SDK 초기화
+  // 4. 네이버 지도 SDK 최초 1회 초기화
   useEffect(() => {
     if (isSdkLoaded && !isMapError && window.naver && window.naver.maps && mapRef.current) {
-      try {
-        const mapContainer = mapRef.current;
-        const mapOptions = {
-          center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
-          zoom: 14, // 네이버 맵 줌 레벨 (높을수록 확대, 14가 동네 수준에 적절함)
-          zoomControl: true, // 줌 컨트롤러 내장 옵션으로 추가
-          zoomControlOptions: {
-            position: window.naver.maps.Position.RIGHT_CENTER
-          }
-        };
+      if (!naverMapInstanceRef.current) {
+        try {
+          const mapContainer = mapRef.current;
+          const mapOptions = {
+            center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
+            zoom: 14, // 네이버 맵 줌 레벨 (높을수록 확대, 14가 동네 수준에 적절함)
+            zoomControl: true, // 줌 컨트롤러 내장 옵션으로 추가
+            zoomControlOptions: {
+              position: window.naver.maps.Position.RIGHT_CENTER
+            }
+          };
 
-        const map = new window.naver.maps.Map(mapContainer, mapOptions);
-        naverMapInstanceRef.current = map;
-        renderNaverMarkers(); // 마커 그리기 함수 호출
-        drawNaverRadiusCircle(); // 반경 원 그리기
-      } catch (err) {
-        console.error("네이버 지도 초기화 오류 (오픈스트리트맵으로 자동 긴급 복구):", err);
-        localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
-        setIsMapError(true);
+          const map = new window.naver.maps.Map(mapContainer, mapOptions);
+          naverMapInstanceRef.current = map;
+        } catch (err) {
+          console.error("네이버 지도 초기화 오류 (오픈스트리트맵으로 자동 긴급 복구):", err);
+          localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
+          setIsMapError(true);
+        }
       }
     }
-  }, [isSdkLoaded, isMapError, selectedCategory, trucksList, searchRadius, myLocation]);
+  }, [isSdkLoaded, isMapError]);
+
+  // 4.1 네이버 지도 마커 레이어 및 중심(myLocation) 실시간 갱신 훅
+  useEffect(() => {
+    if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+      // 💡 지도를 파괴하지 않고 기존 지도판 위에서 카메라 중심만 여의도/검색지로 부드럽게 이동시킵니다!
+      naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(myLocation.lat, myLocation.lng));
+      renderNaverMarkers(); // 마커 그리기 함수 호출
+      drawNaverRadiusCircle(); // 반경 원 그리기
+    }
+  }, [selectedCategory, trucksList, searchRadius, myLocation]);
 
   // 4.5 오픈스트리트맵 (Leaflet) 예비 지도 초기화
   useEffect(() => {

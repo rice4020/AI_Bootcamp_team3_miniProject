@@ -561,30 +561,40 @@ function OwnerMapContent() {
     }
   };
 
-  // 2. 네이버 지도 초기화 및 레이어 데이터 렌더링
+  // 2. 네이버 지도 최초 1회 초기화 훅
   useEffect(() => {
     if (isSdkLoaded && !isMapError && window.naver && window.naver.maps && mapRef.current) {
-      try {
-        const mapContainer = mapRef.current;
-        const mapOptions = {
-          center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
-          zoom: 14, // 네이버 맵 줌 레벨
-          zoomControl: true,
-          zoomControlOptions: {
-            position: window.naver.maps.Position.RIGHT_CENTER
-          }
-        };
-        const map = new window.naver.maps.Map(mapContainer, mapOptions);
-        naverMapInstanceRef.current = map;
-        renderMapLayers(); // 레이어 마커 그리기 호출
-        drawNaverRadiusCircle(); // 반경 원 그리기
-      } catch (err) {
-        console.error("네이버 지도 초기화 실패 (오픈스트리트맵으로 자동 복구):", err);
-        localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
-        setIsMapError(true);
+      if (!naverMapInstanceRef.current) {
+        try {
+          const mapContainer = mapRef.current;
+          const mapOptions = {
+            center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
+            zoom: 14, // 네이버 맵 줌 레벨
+            zoomControl: true,
+            zoomControlOptions: {
+              position: window.naver.maps.Position.RIGHT_CENTER
+            }
+          };
+          const map = new window.naver.maps.Map(mapContainer, mapOptions);
+          naverMapInstanceRef.current = map;
+        } catch (err) {
+          console.error("네이버 지도 초기화 실패 (오픈스트리트맵으로 자동 복구):", err);
+          localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
+          setIsMapError(true);
+        }
       }
     }
-  }, [isSdkLoaded, isMapError, showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation]);
+  }, [isSdkLoaded, isMapError]);
+
+  // 2.1 네이버 지도 마커 레이어 및 중심(myLocation) 실시간 갱신 훅
+  useEffect(() => {
+    if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+      // 💡 지도를 파괴하지 않고 기존 지도판 위에서 카메라 중심만 여의도/검색지로 부드럽게 이동시킵니다!
+      naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(myLocation.lat, myLocation.lng));
+      renderMapLayers(); // 레이어 마커 그리기 호출
+      drawNaverRadiusCircle(); // 반경 원 그리기
+    }
+  }, [showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation]);
 
   // 2.5 오픈스트리트맵 (Leaflet) 예비 지도 초기화 및 레이어 데이터 렌더링
   useEffect(() => {
