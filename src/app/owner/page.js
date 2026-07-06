@@ -296,7 +296,52 @@ function OwnerMapContent() {
   // 📡 실시간 허가 구역 스팟 데이터 상태 및 연동
   const [legalSpotsList, setLegalSpotsList] = useState([]);
 
+  // 🔍 [김유환 추가] 주소 및 동네 검색 상태변수
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 🎪 [김유환 추가] 스팟 주변 축제 목록 정보 상태변수
+  const [spotEvents, setSpotEvents] = useState([]);
+  const [isEventsMock, setIsEventsMock] = useState(false);
+
   const apiKey = process.env.NEXT_PUBLIC_NAVER_MAP_KEY; // 네이버 지도 Client ID
+
+  // 🔍 [김유환 추가] 동네/주소 검색 실행 (네이버 Geocoder 서브모듈 호출)
+  const handleSearchAddress = () => {
+    if (!searchQuery.trim()) {
+      alert('검색할 주소를 입력해 주세요!');
+      return;
+    }
+
+    if (!window.naver || !window.naver.maps || !window.naver.maps.Service) {
+      alert('네이버 지도 서비스가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+
+    window.naver.maps.Service.geocode({
+      query: searchQuery
+    }, (status, response) => {
+      if (status !== window.naver.maps.Service.Status.OK) {
+        alert('검색 결과가 없거나 주소 변환에 실패했습니다.');
+        return;
+      }
+
+      const result = response.v2;
+      if (result.addresses.length === 0) {
+        alert('해당하는 동네 주소를 찾을 수 없습니다.');
+        return;
+      }
+
+      const addressItem = result.addresses[0];
+      const lat = parseFloat(addressItem.y);
+      const lng = parseFloat(addressItem.x);
+
+      setMyLocation({ lat, lng });
+      if (naverMapInstanceRef.current) {
+        naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(lat, lng));
+      }
+      alert(`📍 지도가 [${addressItem.roadAddress || addressItem.jibunAddress}] (으)로 이동되었습니다.`);
+    });
+  };
 
   // 🌤️ 실시간 날씨 데이터 상태 및 갱신 훅
   const [weatherData, setWeatherData] = useState(null); // 내 위치 주변 날씨
@@ -320,10 +365,13 @@ function OwnerMapContent() {
     fetchMyLocationWeather();
   }, [myLocation]);
 
-  // 🌤️ 선택된 추천 스팟 / 행사 위치 날씨 연동 훅
+  // 🌤️🎪 [김유환 추가] 선택된 추천 스팟 / 행사 위치 날씨 및 주변 축제 연동 훅
   useEffect(() => {
     if (selectedItem) {
       setSelectedSpotWeather(null); // 로딩 리셋
+      setSpotEvents([]); // 축제 목록 리셋
+      setIsEventsMock(false);
+
       const fetchSelectedWeather = async () => {
         try {
           const res = await fetch(`/api/weather?lat=${selectedItem.lat}&lng=${selectedItem.lng}`);
@@ -337,9 +385,28 @@ function OwnerMapContent() {
           console.warn("선택 장소 날씨 로드 실패:", err);
         }
       };
+
+      const fetchSpotEvents = async () => {
+        try {
+          const res = await fetch(`/api/events?lat=${selectedItem.lat}&lng=${selectedItem.lng}&radius=3`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.success) {
+              setSpotEvents(json.data);
+              setIsEventsMock(json.isMock || false);
+            }
+          }
+        } catch (err) {
+          console.warn("선택 스팟 주변 축제 목록 패치 실패:", err);
+        }
+      };
+
       fetchSelectedWeather();
+      if (itemType === 'spot') {
+        fetchSpotEvents();
+      }
     }
-  }, [selectedItem]);
+  }, [selectedItem, itemType]);
 
   // 0. 네이버 지도 인증 실패 수신 및 관리자 기본 지도 설정 로드
   useEffect(() => {
@@ -367,14 +434,29 @@ function OwnerMapContent() {
         const res = await fetch('/api/legal-spots');
         const resData = await res.json();
         if (resData.success && resData.data) {
-          setLegalSpotsList(resData.data);
+          // 진짜 DB 데이터셋
+          setLegalSpotsList(resData.data.map(item => ({
+            ...item,
+            isMock: item.isMock || false
+          })));
           console.log(`✅ [Owner Page] 실시간 허가구역 ${resData.data.length}건 획득`);
         } else {
-          setLegalSpotsList(MOCK_LEGAL_SPOTS);
+          // DB 연결 실패 또는 Mock 반환 시 백업 더미를 믹스인
+          const mockWithTag = MOCK_LEGAL_SPOTS.map(spot => ({
+            ...spot,
+            name: `[더미] ${spot.name}`,
+            isMock: true
+          }));
+          setLegalSpotsList(mockWithTag);
         }
       } catch (err) {
         console.warn("⚠️ 실시간 허가구역 정보 로드 실패, 로컬 백업 데이터를 사용합니다:", err);
-        setLegalSpotsList(MOCK_LEGAL_SPOTS);
+        const mockWithTag = MOCK_LEGAL_SPOTS.map(spot => ({
+          ...spot,
+          name: `[더미] ${spot.name}`,
+          isMock: true
+        }));
+        setLegalSpotsList(mockWithTag);
       }
     };
     fetchLegalSpots();
@@ -1017,7 +1099,7 @@ function OwnerMapContent() {
       {/* 네이버 지도 API SDK 동적 로드 */}
       {apiKey && !isMapError && (
         <Script
-          src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${apiKey}`}
+          src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${apiKey}&submodules=geocoder`}
           strategy="lazyOnload"
           onLoad={() => setIsSdkLoaded(true)}
           onError={() => {
@@ -1049,6 +1131,52 @@ function OwnerMapContent() {
 
       {/* 사장님 네비게이션 헤더 */}
       <Navbar userType="owner" truckStatus={truck?.status} />
+
+      {/* 🔍 [김유환 추가] 동네 / 주소 검색 바 */}
+      <div style={{
+        padding: '12px 24px',
+        background: '#FFFFFF',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        gap: '8px',
+        alignItems: 'center',
+        zIndex: 51,
+      }}>
+        <input
+          type="text"
+          placeholder="동네 이름 또는 도로명 주소를 입력하세요 (예: 서초동, 여의도)"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSearchAddress();
+          }}
+          style={{
+            flex: 1,
+            padding: '12px 14px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)',
+            background: 'rgba(0, 0, 0, 0.02)',
+            fontSize: '0.9rem',
+            outline: 'none'
+          }}
+        />
+        <button
+          onClick={handleSearchAddress}
+          style={{
+            padding: '12px 18px',
+            borderRadius: '12px',
+            background: 'var(--primary)',
+            color: '#FFFFFF',
+            border: 'none',
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-neon)'
+          }}
+        >
+          🔍 검색
+        </button>
+      </div>
 
       {/* 정보 레이어 토글 컨트롤러 바 */}
       <div style={{
@@ -1378,9 +1506,24 @@ function OwnerMapContent() {
         {selectedItem && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-              {selectedItem.name}
-            </h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                {selectedItem.name}
+              </h4>
+              {selectedItem.isMock && (
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: '800',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: 'rgba(9, 132, 227, 0.1)',
+                  color: '#0984e3',
+                  border: '1px solid rgba(9, 132, 227, 0.2)'
+                }}>
+                  더미데이터 🧪
+                </span>
+              )}
+            </div>
 
             <p style={{
               fontSize: '0.9rem',
@@ -1417,6 +1560,60 @@ function OwnerMapContent() {
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>🔄 날씨 조회 중...</span>
               )}
             </div>
+
+            {/* 🎪 [김유환 추가] 주변 3km 내 실시간 축제/행사 연동 (itemType === 'spot' 일 때만 표출) */}
+            {itemType === 'spot' && (
+              <div style={{
+                background: 'var(--surface-light)',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                border: '1px solid var(--border)',
+                maxHeight: '160px',
+                overflowY: 'auto'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🎪 주변 개최 축제 (반경 3km)</span>
+                  {isEventsMock && (
+                    <span style={{
+                      fontSize: '0.58rem',
+                      fontWeight: '800',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'rgba(155, 89, 182, 0.1)',
+                      color: '#9B59B6',
+                      border: '1px solid rgba(155, 89, 182, 0.2)'
+                    }}>
+                      더미데이터 🎪
+                    </span>
+                  )}
+                </div>
+                {spotEvents && spotEvents.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {spotEvents.map(evt => (
+                      <div key={evt.id} style={{
+                        background: '#FFFFFF',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        fontSize: '0.78rem'
+                      }}>
+                        <p style={{ fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 2px' }}>{evt.name}</p>
+                        <p style={{ color: 'var(--text-secondary)', margin: '0 0 2px', fontSize: '0.72rem' }}>📍 {evt.location}</p>
+                        <p style={{ color: 'var(--accent)', margin: '0 0 2px', fontSize: '0.72rem', fontWeight: '600' }}>📅 {evt.startDate} ~ {evt.endDate}</p>
+                        <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.72rem', lineHeight: '1.4' }}>{evt.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', padding: '10px 0' }}>
+                    📍 주변 3km 내에 예정된 축제가 없습니다.
+                  </span>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
               {itemType === 'spot' && truck && (

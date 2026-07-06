@@ -15,7 +15,8 @@ const RECOMMENDED_SPOTS = [
     lat: 37.5284,
     lng: 126.9320,
     rules: "합법 점용 허가구역 | 오후 2시 ~ 오후 10시 영업 가능 | 연간 이용료 120만원 | 한식/분식 최적화",
-    advantage: "야간 한강 나들이 유동인구 2만 명 이상 보장, 주말 돗자리 인파 집중 지역"
+    advantage: "야간 한강 나들이 유동인구 2만 명 이상 보장, 주말 돗자리 인파 집중 지역",
+    isMock: true
   },
   {
     id: 'spot-2',
@@ -24,16 +25,19 @@ const RECOMMENDED_SPOTS = [
     lat: 37.5562,
     lng: 126.9225,
     rules: "지자체 청년창업 허가구역 | 주말 오전 11시 ~ 오후 9시 | 청년창업자 가산점 혜택 스팟",
-    advantage: "1020 젊은 유동인구 밀집, 디저트(호떡/타코야끼/에이드) 메뉴 판매량 극대화 구역"
+    advantage: "1020 젊은 유동인구 밀집, 디저트(호떡/타코야끼/에이드) 메뉴 판매량 극대화 구역",
+    isMock: true
   },
   {
     id: 'spot-3',
-    name: "강남역 8번출구 대형빌딩 전면공지",
-    location: "서울 서초구 서초대로 397",
+    name: "강남 푸르지오 아파트 수요장터",
+    location: "서울 서초구 사평대로 290",
     lat: 37.4982,
     lng: 127.0276,
-    rules: "민간 빌딩 전면공지 허가구역 | 평일 오전 11시 ~ 오후 2시 (점심 시간만 허용) | 오피스 상권",
-    advantage: "테이크아웃 직장인 인구 집중, 샌드위치/컵밥/아메리카노 등 회전율 빠른 메뉴 필수"
+    rules: "⚠️ 관리사무소 사전 협의 필요 | 아파트 내부 입주민 알뜰장 | 매주 수요일 오전 10시 ~ 오후 8시",
+    advantage: "아파트 대단지 입주민 가족 단위 고정 고객층 확보, 분식/디저트/반찬류 강세 구역",
+    isApartment: true,
+    isMock: true
   },
   {
     id: 'spot-4',
@@ -42,7 +46,8 @@ const RECOMMENDED_SPOTS = [
     lat: 37.5688,
     lng: 126.9802,
     rules: "지자체 문화축제 연계구역 | 평일 오후 5시 ~ 오후 10시, 주말 상시 허용 | 관광 특구 상권",
-    advantage: "도심 야간 산책 직장인 및 외국인 관광객 다수 분포, 이색 퓨전 양식 메뉴 인기"
+    advantage: "도심 야간 산책 직장인 및 외국인 관광객 다수 분포, 이색 퓨전 양식 메뉴 인기",
+    isMock: true
   },
   {
     id: 'spot-5',
@@ -51,7 +56,8 @@ const RECOMMENDED_SPOTS = [
     lat: 37.5113,
     lng: 126.9965,
     rules: "한강공원 공식 푸드트럭 구역 | 매주 금/토 오후 4시 ~ 오후 11시 (달빛무지개분수 운영시간 연계)",
-    advantage: "분수 쇼 관람 인파 집중으로 피크타임(오후 7~9시) 매출액 극대화, 분식 및 음료 권장"
+    advantage: "분수 쇼 관람 인파 집중으로 피크타임(오후 7~9시) 매출액 극대화, 분식 및 음료 권장",
+    isMock: true
   }
 ];
 
@@ -107,13 +113,6 @@ export default function OwnerRecommendedSpotsPage() {
         if (resData.success && resData.data && resData.data.length > 0) {
           // 실시간 데이터 중 상위 6개를 파싱하여 추천 카드로 정제
           const formatted = resData.data.slice(0, 6).map((item, idx) => {
-            // "소재지: 주소" 형태 분리
-            const addrMatch = item.rules.match(/소재지:\s*(.*)$/);
-            const location = addrMatch ? addrMatch[1] : "도로명 정보 없음";
-
-            // "운영시간: 시간" 형태 분리
-            const timeMatch = item.rules.match(/운영시간:\s*([^|]*)/);
-            const operatingTime = timeMatch ? timeMatch[1].trim() : "상시 허용";
 
             // "관리기관: 기관" 형태 분리
             const agencyMatch = item.rules.match(/관리기관:\s*([^|]*)/);
@@ -122,10 +121,12 @@ export default function OwnerRecommendedSpotsPage() {
             return {
               id: item.id || `gov-spot-${idx}`,
               name: item.name,
-              location: location,
-              lat: item.lat,
-              lng: item.lng,
-              rules: `${operatingTime} 운영 가능 | 관리기관: ${agency}`,
+              location: item.address || "도로명 정보 없음",
+              lat: item.latitude,
+              lng: item.longitude,
+              rules: item.description || "합법 영업 구역",
+              isApartment: item.isApartment || false,
+              isMock: resData.isMock || false, // ◀ API Mock 상태 주입!
               advantage: "정부 공공데이터에 등록된 합법 구역으로 단속 과태료 걱정 없이 청년/소상공인 우대 혜택을 받고 안정적인 매출 확보가 가능합니다."
             };
           });
@@ -203,9 +204,42 @@ export default function OwnerRecommendedSpotsPage() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      {spot.name}
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                        {spot.name}
+                      </h3>
+                      {spot.isApartment && (
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          padding: '3px 8px',
+                          borderRadius: '8px',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          color: '#EF4444',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}>
+                          ⚠️ 관리사무소 사전 협의 필요
+                        </span>
+                      )}
+                      {spot.isMock && (
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          padding: '3px 8px',
+                          borderRadius: '8px',
+                          background: 'rgba(9, 132, 227, 0.1)',
+                          color: '#0984e3',
+                          border: '1px solid rgba(9, 132, 227, 0.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center'
+                        }}>
+                          더미데이터 🧪
+                        </span>
+                      )}
+                    </div>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{spot.location}</span>
                   </div>
                   <span style={{
