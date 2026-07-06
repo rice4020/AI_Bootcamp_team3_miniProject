@@ -191,9 +191,33 @@ export function updateTruckInfo(username, updatedTruck) {
   if (idx !== -1) {
     trucks[idx] = { ...trucks[idx], ...updatedTruck };
     localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
-    
-    // 일반 소비자용 모의 데이터(MOCK_TRUCKS)와 동기화를 위해, MOCK_TRUCKS에 세션 유저의 트럭이 있다면 변경해 줍니다.
-    // MVP 상에서 일반 화면 지도 마커 연동을 위해 임시 저장
+  }
+
+  // 🌐 [김유환 추가] 실시간 Neon DB 물리적 동기화 쿼리 (비동기 트리거)
+  if (typeof window !== "undefined") {
+    fetch('/api/trucks', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ownerUsername: username,
+        name: updatedTruck.name,
+        category: updatedTruck.category,
+        intro: updatedTruck.intro,
+        menu: updatedTruck.menu,
+        stock: updatedTruck.stock,
+        waitingTeams: updatedTruck.waitingTeams,
+        status: updatedTruck.status,
+        lat: updatedTruck.lat,
+        lng: updatedTruck.lng
+      })
+    })
+    .then(res => res.json())
+    .then(json => {
+      if (json.success) console.log("✅ [Sync] 푸드트럭 메뉴/상태 데이터가 Neon DB와 동기화되었습니다.");
+    })
+    .catch(err => console.warn("⚠️ [Sync] Neon DB 동기화 통신 실패:", err));
   }
 }
 

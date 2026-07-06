@@ -89,3 +89,73 @@ export async function GET(request) {
     return Response.json([]);
   }
 }
+
+/**
+ * 🚚 푸드트럭 정보 및 메뉴 실시간 Neon DB 업데이트 API
+ * PUT /api/trucks
+ */
+export async function PUT(request) {
+  if (IS_MOCK_MODE) {
+    return Response.json({ success: true, message: "MOCK 모드: DB 저장을 생략합니다." });
+  }
+
+  try {
+    const { ownerUsername, name, category, intro, menu, stock, waitingTeams, status, lat, lng } = await request.json();
+    console.log(`🔄 [API/trucks] Neon Database 푸드트럭 정보 업데이트 시작 (Owner: ${ownerUsername})...`);
+
+    const menuStr = JSON.stringify(menu || []);
+
+    // 1. 해당 사장님 ID(ownerId)를 기준으로 먼저 UPDATE 쿼리를 시도합니다.
+    let res = await sql`
+      UPDATE "FoodTruck"
+      SET 
+        "truckName" = ${name},
+        menu = ${menuStr},
+        stock = ${stock || 0},
+        status = ${status || 'inactive'},
+        notice = ${intro || ''},
+        "updatedAt" = NOW()
+      WHERE "ownerId" = ${ownerUsername}
+      RETURNING *
+    `;
+
+    // 2. 만약 해당 ownerId의 트럭 레코드가 존재하지 않는다면 신규 생성(INSERT)해 줍니다.
+    if (!res || res.length === 0) {
+      res = await sql`
+        INSERT INTO "FoodTruck" (
+          id, 
+          "ownerId", 
+          "truckName", 
+          menu, 
+          stock, 
+          status, 
+          latitude, 
+          longitude, 
+          notice, 
+          "updatedAt"
+        )
+        VALUES (
+          ${ownerUsername + '_truck'}, 
+          ${ownerUsername}, 
+          ${name}, 
+          ${menuStr}, 
+          ${stock || 0}, 
+          ${status || 'inactive'}, 
+          ${lat || null}, 
+          ${lng || null}, 
+          ${intro || ''}, 
+          NOW()
+        )
+        RETURNING *
+      `;
+    }
+
+    console.log(`✅ [API/trucks] 푸드트럭 정보 DB 동기화 성공 (ID: ${res[0].id})`);
+    return Response.json({ success: true, data: res[0] });
+
+  } catch (error) {
+    console.error("❌ [API/trucks] 푸드트럭 DB 동기화 실패:", error.message);
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
