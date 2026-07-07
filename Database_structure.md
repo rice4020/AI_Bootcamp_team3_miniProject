@@ -34,8 +34,22 @@
 | **email** | `varchar(100)` | **NOT NULL, UNIQUE** (이메일 주소) |
 | **role** | `varchar(20)` | **NOT NULL**, 기본값: `'customer'` (`customer`, `owner`, `admin`) |
 | **isActive** | `boolean` | **NOT NULL**, 기본값: `true` (정지 여부 검증 필드) |
+| **truckPhotoUrl** | `varchar(255)` | `NULL 허용` (점주 증빙용 푸드트럭 사진 URL) |
+| **menuCategoryId** | `serial` 또는 `varchar(50)` | `NULL 허용`, **Foreign Key** (점주 취급 메뉴, 참조: `FoodTruckMenu.id`) |
 | **createdAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `CURRENT_TIMESTAMP` |
 | **updatedAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `CURRENT_TIMESTAMP` |
+
+---
+
+### 📋 FoodTruckMenu (취급 메뉴 마스터 테이블)
+푸드트럭이 취급하는 메뉴 카테고리(분류/소분류) 마스터 데이터입니다.
+
+| 컬럼명 | 데이터 타입 | 제약 조건 / 설명 |
+| :--- | :--- | :--- |
+| **id** | `serial` 또는 `varchar(50)` | **Primary Key** |
+| **category** | `varchar(50)` | **NOT NULL** (예: 분식, 디저트, 꼬치, 양식 등) |
+| **subCategory** | `varchar(100)` | **NOT NULL** (예: 떡볶이, 김밥, 스테이크 등) |
+| **createdAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `CURRENT_TIMESTAMP` |
 
 ---
 
