@@ -77,9 +77,9 @@ async function getDashboardStats(): Promise<DashboardStats> {
 // ─── 실행 진입점 (npm run dev:admin:main 으로 직접 실행 시) ─────
 async function main() {
   console.log('🛡️  관리자 대시보드 통계 조회 중...\n');
-  
+
   const stats = await getDashboardStats();
-  
+
   console.log('📊 시스템 현황 대시보드');
   console.log('========================');
   console.log(`👤 전체 가입 사용자 : ${stats.totalUsers} 명`);

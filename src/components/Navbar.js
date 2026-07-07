@@ -9,8 +9,8 @@ import { usePathname, useRouter } from 'next/navigation';
  */
 export default function Navbar({
   userType = "user",
-  truckStatus,
-  onStatusChange
+  truckStatus = null,
+  onStatusChange = () => {}
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -81,14 +81,12 @@ export default function Navbar({
         {(userType === "owner" || userType === "admin") && (
           <button
             onClick={() => {
-              if (confirm("로그아웃 하시겠습니까?")) {
-                localStorage.removeItem(userType === "owner" ? "roadfood_session" : "roadfood_admin_session");
-                alert("로그아웃 되었습니다.");
-                router.push(userType === "owner" ? "/auth/login" : "/admin");
-              }
+              localStorage.removeItem(userType === "owner" ? "roadfood_session" : "roadfood_admin_session");
+              alert("로그아웃 되었습니다.");
+              router.push(userType === "owner" ? "/auth/login" : "/admin");
             }}
             className="mobile-nav-item"
-            style={{ border: 'none', background: 'none' }}
+            style={{ border: 'none', background: 'none', cursor: 'pointer' }}
           >
             <span className="mobile-nav-icon">🚪</span>
             <span>로그아웃</span>
@@ -157,20 +155,22 @@ export default function Navbar({
         {(userType === "owner" || userType === "admin") && (
           <button
             onClick={() => {
-              if (confirm("로그아웃 하시겠습니까?")) {
-                localStorage.removeItem(userType === "owner" ? "roadfood_session" : "roadfood_admin_session");
-                alert("로그아웃 되었습니다.");
-                router.push(userType === "owner" ? "/auth/login" : "/admin");
-              }
+              localStorage.removeItem(userType === "owner" ? "roadfood_session" : "roadfood_admin_session");
+              alert("로그아웃 되었습니다.");
+              router.push(userType === "owner" ? "/auth/login" : "/admin");
             }}
             style={{
               color: 'var(--text-muted)',
               fontSize: '0.85rem',
               marginLeft: '8px',
               transition: 'color 0.2s',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 8px'
             }}
-            onMouseEnter={(e) => e.target.style.color = 'var(--danger)'}
-            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
           >
             로그아웃
           </button>
