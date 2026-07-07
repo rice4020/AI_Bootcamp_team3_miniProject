@@ -249,6 +249,88 @@ const MOCK_EVENTS = [
   }
 ];
 
+// 👥 [김유환 추가] 스팟 이름을 분석하여 예상 일평균 유동인구를 반환하는 헬퍼 함수
+// DB 구조를 변경하지 않고 프론트엔드 단에서 안전하게 유동인구를 매핑하여 사용합니다.
+const getEstimatedPopulation = (spot) => {
+  const name = spot.name || "";
+  // 랜드마크나 주요 지역 키워드별 일평균 유동인구 매핑 (일반 상권 데이터를 기반으로 근사치 지정)
+  if (name.includes("강남역")) return 45000;
+  if (name.includes("홍대") || name.includes("신촌")) return 35000;
+  if (name.includes("여의도 한강") || name.includes("반포 한강")) return 32000;
+  if (name.includes("뚝섬 한강") || name.includes("망원 한강")) return 28000;
+  if (name.includes("동대문 디자인") || name.includes("DDP")) return 25000;
+  if (name.includes("올림픽공원") || name.includes("서울숲공원")) return 22000;
+  if (name.includes("대학로") || name.includes("청계천")) return 20000;
+  if (name.includes("송도 센트럴") || name.includes("일산 호수")) return 18000;
+  if (name.includes("수원 화성")) return 15000;
+  if (name.includes("어린이대공원") || name.includes("중앙공원")) return 12000;
+  if (name.includes("율동공원") || name.includes("배곧생명")) return 10000;
+  if (name.includes("대부도") || name.includes("자라섬")) return 8000;
+  if (name.includes("임진각") || name.includes("삼패공원")) return 6000;
+  
+  // 공원이나 주요 광장 보너스
+  if (name.includes("한강")) return 15000;
+  if (name.includes("공원")) return 8000;
+  if (name.includes("광장")) return 12000;
+  return 3500; // 기본 일평균 유동인구
+};
+
+// 👥 [김유환 추가] 스팟 이름을 분석하여 성별 및 연령대 통계 비율을 반환하는 헬퍼 함수
+// 상가(상권)정보 API에서 유동인구 비율은 제공하지 않으므로, 이 매핑 방식을 결합해 실시간 정보를 보완합니다.
+const getDemographicAnalysis = (spot) => {
+  const name = spot.name || "";
+  
+  if (name.includes("한강") || name.includes("공원") || name.includes("호수")) {
+    // 🌳 한강공원/공원/호수 등 가족 및 나들이 단위 타겟 상권
+    return {
+      gender: { male: 49, female: 51 },
+      ageGroups: [
+        { label: "30대", ratio: 35, color: "#00b894" },
+        { label: "20대", ratio: 30, color: "#0984e3" },
+        { label: "40대 이상", ratio: 20, color: "#e84393" },
+        { label: "10대 이하", ratio: 15, color: "#fdcb6e" }
+      ],
+      mainAge: "30대"
+    };
+  } else if (name.includes("홍대") || name.includes("신촌") || name.includes("대학로")) {
+    // 🎓 홍대/신촌/대학로 등 젊은 대학생 및 청년층 중심 상권
+    return {
+      gender: { male: 42, female: 58 },
+      ageGroups: [
+        { label: "20대", ratio: 65, color: "#0984e3" },
+        { label: "30대", ratio: 18, color: "#00b894" },
+        { label: "10대 이하", ratio: 10, color: "#fdcb6e" },
+        { label: "40대 이상", ratio: 7, color: "#e84393" }
+      ],
+      mainAge: "20대"
+    };
+  } else if (name.includes("강남") || name.includes("역") || name.includes("빌딩")) {
+    // 🏢 강남역/오피스 등 직장인 중심 상권
+    return {
+      gender: { male: 48, female: 52 },
+      ageGroups: [
+        { label: "30대", ratio: 45, color: "#00b894" },
+        { label: "20대", ratio: 35, color: "#0984e3" },
+        { label: "40대 이상", ratio: 15, color: "#e84393" },
+        { label: "10대 이하", ratio: 5, color: "#fdcb6e" }
+      ],
+      mainAge: "30대"
+    };
+  } else {
+    // 🏡 일반 주거지역/동네 장터 타겟 상권
+    return {
+      gender: { male: 50, female: 50 },
+      ageGroups: [
+        { label: "30대", ratio: 35, color: "#00b894" },
+        { label: "40대 이상", ratio: 30, color: "#e84393" },
+        { label: "20대", ratio: 20, color: "#0984e3" },
+        { label: "10대 이하", ratio: 15, color: "#fdcb6e" }
+      ],
+      mainAge: "30대"
+    };
+  }
+};
+
 // 📡 useSearchParams를 안전하게 사용하기 위한 Suspense 래퍼 컴포넌트
 function OwnerMapContent() {
   const router = useRouter();
@@ -268,13 +350,13 @@ function OwnerMapContent() {
   const [showWeather, setShowWeather] = useState(false);
 
   // 모달 관리
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [itemType, setItemType] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null); 
+  const [itemType, setItemType] = useState(null); 
 
   // 지도 관련
-  const [myLocation, setMyLocation] = useState({
-    lat: queryLat ? parseFloat(queryLat) : 37.5665,
-    lng: queryLng ? parseFloat(queryLng) : 126.9780
+  const [myLocation, setMyLocation] = useState({ 
+    lat: queryLat ? parseFloat(queryLat) : 37.5665, 
+    lng: queryLng ? parseFloat(queryLng) : 126.9780 
   });
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
   const [isMapError, setIsMapError] = useState(false);
@@ -297,7 +379,88 @@ function OwnerMapContent() {
   // 📡 실시간 허가 구역 스팟 데이터 상태 및 연동
   const [legalSpotsList, setLegalSpotsList] = useState([]);
 
+  // 🔍 [김유환 추가] 주소 및 동네 검색 상태변수
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 🔍 [김유환] 지도 줌 레벨 상태변수 제거 완료 (고정 마커로 원복)
+  // 🔍 [김유환 추가] 허가구역 정렬 기준 상태변수 ('distance': 가까운순, 'population': 예상유동인구순)
+  const [sortType, setSortType] = useState('distance');
+
+  // 🔍 [김유환 추가] 실시간 상권 분석 API 응답 데이터 저장 상태변수
+  const [commercialData, setCommercialData] = useState(null);
+  const [isCommercialLoading, setIsCommercialLoading] = useState(false);
+
+  // 🧭 [김유환 추가] 네이버 지도 목적지 다이렉트 입력 길찾기 실행 함수
+  const handleOpenNavigation = (spot) => {
+    if (!spot) return;
+    const spotLat = parseFloat(spot.lat || spot.latitude);
+    const spotLng = parseFloat(spot.lng || spot.longitude);
+    const spotName = spot.name || "목적지";
+
+    if (isNaN(spotLat) || isNaN(spotLng)) {
+      alert("스팟의 위치 정보(좌표)가 올바르지 않습니다.");
+      return;
+    }
+
+    // 🟢 네이버 지도 길찾기 목적지 직접 입력 포맷 (새 창 열기)
+    const url = `https://map.naver.com/v5/dir/,,,/to:${encodeURIComponent(spotName)},${spotLat},${spotLng}`;
+    window.open(url, '_blank');
+  };
+
+  // 🎪 [김유환 추가] 스팟 주변 축제 목록 정보 상태변수
+  const [spotEvents, setSpotEvents] = useState([]);
+  const [isEventsMock, setIsEventsMock] = useState(false);
+  // ◀ [김유환 추가] 실시간 전국 축제/행사 데이터 상태변수
+  // 페이지 최초 로딩 시 MOCK_EVENTS를 기본값으로 사용해 API 응답 전에도 목록 표시
+  const [eventsList, setEventsList] = useState(MOCK_EVENTS);
+
   const apiKey = process.env.NEXT_PUBLIC_NAVER_MAP_KEY; // 네이버 지도 Client ID
+
+  // 🔍 [김유환 추가] 동네/주소/지명 검색 실행
+  // ▶ Nominatim(OpenStreetMap) 무료 API를 사용해 "여의도", "홍대" 등 일반 지명도 검색 가능
+  // ▶ 네이버 Geocoder는 정확한 도로명 주소가 필요하지만, Nominatim은 지명·관공서·지하철역 등 검색 지원
+  const handleSearchAddress = async () => {
+    if (!searchQuery.trim()) {
+      alert('검색할 주소나 지명을 입력해 주세요!');
+      return;
+    }
+
+    try {
+      // 한국 내 검색으로 범위 제한 (countrycodes=kr)
+      const query = encodeURIComponent(searchQuery + ' 대한민국');
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=kr&accept-language=ko`,
+        { headers: { 'User-Agent': 'YojariApp/1.0' } }
+      );
+      const data = await res.json();
+
+      if (!data || data.length === 0) {
+        alert('검색 결과가 없습니다.\n예시: "여의도", "홍대역", "강남구청", "인사동"');
+        return;
+      }
+
+      const place = data[0];
+      const lat = parseFloat(place.lat);
+      const lng = parseFloat(place.lon);
+      const displayName = place.display_name.split(',').slice(0, 3).join(', ');
+
+      setMyLocation({ lat, lng });
+
+      // 네이버 지도가 로드된 경우 이동
+      if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+        naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(lat, lng));
+      }
+      // Leaflet(OSM) 지도가 로드된 경우 이동
+      if (leafletMapInstanceRef.current && window.L) {
+        leafletMapInstanceRef.current.setView([lat, lng], 15);
+      }
+
+      alert(`📍 [${displayName}](으)로 이동했습니다.`);
+    } catch (err) {
+      console.error('주소 검색 오류:', err);
+      alert('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  };
 
   // 🌤️ 실시간 날씨 데이터 상태 및 갱신 훅
   const [weatherData, setWeatherData] = useState(null); // 내 위치 주변 날씨
@@ -321,10 +484,17 @@ function OwnerMapContent() {
     fetchMyLocationWeather();
   }, [myLocation]);
 
-  // 🌤️ 선택된 추천 스팟 / 행사 위치 날씨 연동 훅
+  // 🌤️🎪 [김유환 추가] 선택된 추천 스팟 / 행사 위치 날씨 및 주변 축제 연동 훅
   useEffect(() => {
     if (selectedItem) {
       setSelectedSpotWeather(null); // 로딩 리셋
+      setSpotEvents([]); // 축제 목록 리셋
+      setIsEventsMock(false);
+
+      // 🔍 [김유환 추가] 실시간 상권 분석 데이터 상태 초기화
+      setCommercialData(null);
+      setIsCommercialLoading(true);
+
       const fetchSelectedWeather = async () => {
         try {
           const res = await fetch(`/api/weather?lat=${selectedItem.lat}&lng=${selectedItem.lng}`);
@@ -338,9 +508,48 @@ function OwnerMapContent() {
           console.warn("선택 장소 날씨 로드 실패:", err);
         }
       };
+
+      const fetchSpotEvents = async () => {
+        try {
+          const res = await fetch(`/api/events?lat=${selectedItem.lat}&lng=${selectedItem.lng}&radius=3`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.success) {
+              setSpotEvents(json.data);
+              setIsEventsMock(json.isMock || false);
+            }
+          }
+        } catch (err) {
+          console.warn("선택 스팟 주변 축제 목록 패치 실패:", err);
+        }
+      };
+
       fetchSelectedWeather();
+      if (itemType === 'spot') {
+        fetchSpotEvents();
+        
+        // 🔍 [김유환 추가] 실시간 상권 분석 데이터 호출 함수 실행
+        const fetchCommercialData = async () => {
+          try {
+            const res = await fetch(`/api/commercial?lat=${selectedItem.lat}&lng=${selectedItem.lng}&radius=1000`);
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.success) {
+                setCommercialData(json);
+              }
+            }
+          } catch (err) {
+            console.warn("상권 분석 데이터 조회 실패:", err);
+          } finally {
+            setIsCommercialLoading(false);
+          }
+        };
+        fetchCommercialData();
+      } else {
+        setIsCommercialLoading(false);
+      }
     }
-  }, [selectedItem]);
+  }, [selectedItem, itemType]);
 
   // 0. 네이버 지도 인증 실패 수신 및 관리자 기본 지도 설정 로드
   useEffect(() => {
@@ -368,18 +577,56 @@ function OwnerMapContent() {
         const res = await fetch('/api/legal-spots');
         const resData = await res.json();
         if (resData.success && resData.data) {
-          setLegalSpotsList(resData.data);
+          // 진짜 DB 데이터셋
+          setLegalSpotsList(resData.data.map(item => ({
+            ...item,
+            isMock: item.isMock || false
+          })));
           console.log(`✅ [Owner Page] 실시간 허가구역 ${resData.data.length}건 획득`);
         } else {
-          setLegalSpotsList(MOCK_LEGAL_SPOTS);
+          // DB 연결 실패 또는 Mock 반환 시 백업 더미를 믹스인
+          const mockWithTag = MOCK_LEGAL_SPOTS.map(spot => ({
+            ...spot,
+            name: `[더미] ${spot.name}`,
+            isMock: true
+          }));
+          setLegalSpotsList(mockWithTag);
         }
       } catch (err) {
         console.warn("⚠️ 실시간 허가구역 정보 로드 실패, 로컬 백업 데이터를 사용합니다:", err);
-        setLegalSpotsList(MOCK_LEGAL_SPOTS);
+        const mockWithTag = MOCK_LEGAL_SPOTS.map(spot => ({
+          ...spot,
+          name: `[더미] ${spot.name}`,
+          isMock: true
+        }));
+        setLegalSpotsList(mockWithTag);
       }
     };
     fetchLegalSpots();
   }, []);
+
+  // 📡 [김유환 추가] 실시간 전국 축제/행사 패치 훅 (반경 필터 연동)
+  useEffect(() => {
+    const fetchAllEvents = async () => {
+      try {
+        const radiusVal = searchRadius ? searchRadius / 1000 : '';
+        const res = await fetch(`/api/events?lat=${myLocation.lat}&lng=${myLocation.lng}&radius=${radiusVal}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.success) {
+            setEventsList(json.data.map(item => ({
+              ...item,
+              lat: parseFloat(item.latitude),
+              lng: parseFloat(item.longitude)
+            })));
+          }
+        }
+      } catch (err) {
+        console.warn("전체 행사 데이터 조회 실패:", err);
+      }
+    };
+    fetchAllEvents();
+  }, [searchRadius, myLocation]);
 
   // 모바일 크기 감지 리스너
   useEffect(() => {
@@ -409,7 +656,7 @@ function OwnerMapContent() {
       router.push('/auth/login');
       return;
     }
-
+    
     if (userSession.needPasswordChange) {
       router.push('/auth/change-password');
       return;
@@ -480,30 +727,49 @@ function OwnerMapContent() {
     }
   };
 
-  // 2. 네이버 지도 초기화 및 레이어 데이터 렌더링
+  // 2. 네이버 지도 최초 1회 초기화 훅
   useEffect(() => {
     if (isSdkLoaded && !isMapError && window.naver && window.naver.maps && mapRef.current) {
-      try {
-        const mapContainer = mapRef.current;
-        const mapOptions = {
-          center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
-          zoom: 14, // 네이버 맵 줌 레벨
-          zoomControl: true,
-          zoomControlOptions: {
-            position: window.naver.maps.Position.RIGHT_CENTER
-          }
-        };
-        const map = new window.naver.maps.Map(mapContainer, mapOptions);
-        naverMapInstanceRef.current = map;
-        renderMapLayers(); // 레이어 마커 그리기 호출
-        drawNaverRadiusCircle(); // 반경 원 그리기
-      } catch (err) {
-        console.error("네이버 지도 초기화 실패 (오픈스트리트맵으로 자동 복구):", err);
-        localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
-        setIsMapError(true);
+      if (!naverMapInstanceRef.current) {
+        try {
+          const mapContainer = mapRef.current;
+          const mapOptions = {
+            center: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
+            zoom: 14, // 네이버 맵 줌 레벨
+            zoomControl: true,
+            zoomControlOptions: {
+              position: window.naver.maps.Position.RIGHT_CENTER
+            }
+          };
+          const map = new window.naver.maps.Map(mapContainer, mapOptions);
+          naverMapInstanceRef.current = map;
+
+          // 🔍 [김유환] 네이버 지도 줌 변경 리스너 제거 (줌 락 이슈 예방)
+        } catch (err) {
+          console.error("네이버 지도 초기화 실패 (오픈스트리트맵으로 자동 복구):", err);
+          localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
+          setIsMapError(true);
+        }
       }
     }
-  }, [isSdkLoaded, isMapError, showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation]);
+  }, [isSdkLoaded, isMapError]);
+
+  // 2.1 네이버 지도 마커 레이어 및 중심(myLocation) 실시간 갱신 훅
+  useEffect(() => {
+    if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+      // 💡 지도를 파괴하지 않고 기존 지도판 위에서 카메라 중심만 여의도/검색지로 부드럽게 이동시킵니다!
+      naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(myLocation.lat, myLocation.lng));
+      renderMapLayers(); // 레이어 마커 그리기 호출
+      drawNaverRadiusCircle(); // 반경 원 그리기
+    }
+    // 💡 클린업 함수를 통해 리렌더링 시 이전 마커들의 잔상이 지도판에 남는 것을 메모리 상에서 원천 제거합니다.
+    return () => {
+      if (overlaysRef.current) {
+        overlaysRef.current.forEach(o => o.setMap(null));
+        overlaysRef.current = [];
+      }
+    };
+  }, [showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation]);
 
   // 2.5 오픈스트리트맵 (Leaflet) 예비 지도 초기화 및 레이어 데이터 렌더링
   useEffect(() => {
@@ -531,12 +797,22 @@ function OwnerMapContent() {
         }).addTo(map);
 
         leafletMapInstanceRef.current = map;
+
+        // 🔍 [김유환] Leaflet 지도 줌 변경 리스너 제거
+
         renderLeafletMapLayers();
         drawLeafletRadiusCircle(); // 반경 원 그리기
       } catch (err) {
         console.error("Leaflet 지도 초기화 실패:", err);
       }
     }
+    // 💡 Leaflet용 잔상 마커 메모리 클린업
+    return () => {
+      if (leafletMarkersRef.current) {
+        leafletMarkersRef.current.forEach(m => m.remove());
+        leafletMarkersRef.current = [];
+      }
+    };
   }, [isMapError, isLeafletLoaded, showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation]);
 
 
@@ -561,42 +837,53 @@ function OwnerMapContent() {
     overlaysRef.current.forEach(o => o.setMap(null));
     overlaysRef.current = [];
 
-    // A. 내 위치 마커 그리기 (파란 펄스 링 형태)
-    const myLocationHtml = `
-      <div style="
-        width: 24px;
-        height: 24px;
-        background: rgba(9, 132, 227, 0.25);
-        border: 2px solid #0984e3;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div class="pulse-marker-blue" style="
-          width: 10px;
-          height: 10px;
-          background: #0984e3;
-          border-radius: 50%;
-          box-shadow: 0 0 8px #0984e3;
-        "></div>
-      </div>
-    `;
+    // A. 내 위치 마커 그리기 (영업 중이 아닐 때만 핀을 노출합니다. 영업 중일 때는 트럭 🚚 마커가 내 위치를 대변하여 겹침을 예방합니다.)
+    const isTruckActive = truck && truck.status === 'active';
+    if (!isTruckActive) {
+      const myLocationHtml = `
+        <div style="
+          position: relative;
+          width: 44px;
+          height: 44px;
+          background: #E84393; /* 프리미엄 네온 핫핑크-레드 */
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 5px 15px rgba(232, 67, 147, 0.45);
+          border: 2.5px solid #FFFFFF;
+        ">
+          <div style="
+            transform: rotate(45deg);
+            color: #FFFFFF;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-weight: 900;
+            font-size: 0.58rem;
+            line-height: 1.15;
+            text-align: center;
+            white-space: nowrap;
+          ">
+            YOU<br/>ARE<br/>HERE
+          </div>
+        </div>
+      `;
 
-    const myLocMarker = new window.naver.maps.Marker({
-      position: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
-      map: naverMapInstanceRef.current,
-      icon: {
-        content: myLocationHtml,
-        size: new window.naver.maps.Size(24, 24),
-        anchor: new window.naver.maps.Point(12, 12)
-      }
-    });
-    overlaysRef.current.push(myLocMarker);
+      const myLocMarker = new window.naver.maps.Marker({
+        position: new window.naver.maps.LatLng(myLocation.lat, myLocation.lng),
+        map: naverMapInstanceRef.current,
+        icon: {
+          content: myLocationHtml,
+          size: new window.naver.maps.Size(44, 44),
+          anchor: new window.naver.maps.Point(22, 44) // 핀의 뾰족한 아랫부분 끝을 기준 좌표와 일치시킴
+        }
+      });
+      overlaysRef.current.push(myLocMarker);
+    }
 
-    // B. 내 트럭 마커 그리기 (주황 🚚 마커)
-    if (truck) {
-      const isOnline = truck.status === 'active';
+    // B. 내 트럭 마커 그리기 (영업 중인 상태 active 일 때만 지도 상에 🚚 마커를 노출합니다)
+    if (truck && truck.status === 'active') {
+      const isOnline = true;
 
       // 네이버 지도는 icon.content에 HTML 문자열을 넣어 커스텀 마커를 만듦
       const myTruckHtml = `
@@ -643,36 +930,52 @@ function OwnerMapContent() {
     // C. 합법 스팟 레이어 렌더링 (초록 🏛️ 아이콘)
     if (showSpots) {
       legalSpotsList.forEach(spot => {
+        const spotLat = parseFloat(spot.lat || spot.latitude);
+        const spotLng = parseFloat(spot.lng || spot.longitude);
+        if (isNaN(spotLat) || isNaN(spotLng)) return;
+
         // 반경 필터 적용
         if (searchRadius) {
-          const dist = getDistance(myLocation.lat, myLocation.lng, spot.lat, spot.lng);
+          const dist = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
           if (dist > searchRadius) return; // 반경 바깥이면 제외
         }
 
         const spotHtml = `
           <div style="
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            border: 3px solid #00B894;
+            position: relative;
+            width: 61px;
+            height: 61px;
+            background: #1e3799; /* 고급스러운 남색 핀 */
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 15px rgba(0,184,148,0.25);
-            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(30, 55, 153, 0.45);
+            border: 2.5px solid #FFFFFF;
           ">
-            <span style="font-size: 1.1rem;">🏛️</span>
+            <div style="
+              width: 42px;
+              height: 42px;
+              background: #FFFFFF;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transform: rotate(45deg);
+            ">
+              <span style="font-size: 1.55rem; line-height: 1;">🚚</span>
+            </div>
           </div>
         `;
 
         const spotMarker = new window.naver.maps.Marker({
-          position: new window.naver.maps.LatLng(spot.lat, spot.lng),
+          position: new window.naver.maps.LatLng(spotLat, spotLng),
           map: naverMapInstanceRef.current,
           icon: {
             content: spotHtml,
-            size: new window.naver.maps.Size(36, 36),
-            anchor: new window.naver.maps.Point(18, 18)
+            size: new window.naver.maps.Size(61, 61),
+            anchor: new window.naver.maps.Point(30, 61) // 핀의 뾰족한 아래쪽 끝을 좌표에 고정
           }
         });
 
@@ -680,7 +983,12 @@ function OwnerMapContent() {
         if (spotEl) {
           spotEl.style.cursor = 'pointer';
           spotEl.addEventListener('click', () => {
-            setSelectedItem(spot);
+            // 상세 정보 창 열릴 때 안전하게 위경도 필드 믹스인
+            setSelectedItem({
+              ...spot,
+              lat: spotLat,
+              lng: spotLng
+            });
             setItemType('spot');
           });
         }
@@ -691,7 +999,7 @@ function OwnerMapContent() {
 
     // D. 주변 행사 정보 레이어 렌더링 (보라 🎆 아이콘)
     if (showEvents) {
-      MOCK_EVENTS.forEach(ev => {
+      eventsList.forEach(ev => {
         // 반경 필터 적용
         if (searchRadius) {
           const dist = getDistance(myLocation.lat, myLocation.lng, ev.lat, ev.lng);
@@ -700,18 +1008,26 @@ function OwnerMapContent() {
 
         const evHtml = `
           <div style="
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            border: 3px solid #9B59B6;
+            position: relative;
+            width: 61px;
+            height: 61px;
+            background: #f1c40f; /* 노란색 핀 */
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 15px rgba(155,89,182,0.25);
-            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(241, 196, 15, 0.45);
+            border: 2.5px solid #FFFFFF;
           ">
-            <span style="font-size: 1.1rem;">🎆</span>
+            <div style="
+              transform: rotate(45deg);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            ">
+              <span style="font-size: 2rem; color: #FFFFFF; line-height: 1;">★</span>
+            </div>
           </div>
         `;
 
@@ -720,8 +1036,8 @@ function OwnerMapContent() {
           map: naverMapInstanceRef.current,
           icon: {
             content: evHtml,
-            size: new window.naver.maps.Size(36, 36),
-            anchor: new window.naver.maps.Point(18, 18)
+            size: new window.naver.maps.Size(61, 61),
+            anchor: new window.naver.maps.Point(30, 61) // 핀의 뾰족한 아래쪽 끝을 좌표에 고정
           }
         });
 
@@ -747,40 +1063,51 @@ function OwnerMapContent() {
     leafletMarkersRef.current.forEach(m => m.remove());
     leafletMarkersRef.current = [];
 
-    // A. 내 위치 마커 그리기
-    const myLocationIcon = window.L.divIcon({
-      html: `
-        <div style="
-          width: 24px;
-          height: 24px;
-          background: rgba(9, 132, 227, 0.25);
-          border: 2px solid #0984e3;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        ">
-          <div class="pulse-marker-blue" style="
-            width: 10px;
-            height: 10px;
-            background: #0984e3;
-            border-radius: 50%;
-            box-shadow: 0 0 8px #0984e3;
-          "></div>
-        </div>
-      `,
-      className: 'custom-osm-my-location',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
-    });
+    // A. 내 위치 마커 그리기 (오픈스트리트맵 - 영업 중이 아닐 때만 핀 노출)
+    const isTruckActive = truck && truck.status === 'active';
+    if (!isTruckActive) {
+      const myLocationIcon = window.L.divIcon({
+        html: `
+          <div style="
+            position: relative;
+            width: 44px;
+            height: 44px;
+            background: #E84393;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 15px rgba(232, 67, 147, 0.45);
+            border: 2.5px solid #FFFFFF;
+          ">
+            <div style="
+              transform: rotate(45deg);
+              color: #FFFFFF;
+              font-family: system-ui, -apple-system, sans-serif;
+              font-weight: 900;
+              font-size: 0.58rem;
+              line-height: 1.15;
+              text-align: center;
+              white-space: nowrap;
+            ">
+              YOU<br/>ARE<br/>HERE
+            </div>
+          </div>
+        `,
+        className: 'custom-osm-my-location',
+        iconSize: [44, 44],
+        iconAnchor: [22, 44] // OSM용 핀 앵커도 최하단 중앙 배치
+      });
 
-    const myLocMarker = window.L.marker([myLocation.lat, myLocation.lng], { icon: myLocationIcon })
-      .addTo(leafletMapInstanceRef.current);
-    leafletMarkersRef.current.push(myLocMarker);
+      const myLocMarker = window.L.marker([myLocation.lat, myLocation.lng], { icon: myLocationIcon })
+        .addTo(leafletMapInstanceRef.current);
+      leafletMarkersRef.current.push(myLocMarker);
+    }
 
-    // B. 내 트럭 마커 그리기
-    if (truck) {
-      const isOnline = truck.status === 'active';
+    // B. 내 트럭 마커 그리기 (오픈스트리트맵 - 영업 중 active 일 때만 노출)
+    if (truck && truck.status === 'active') {
+      const isOnline = true;
       const myTruckHtml = `
         <div class="${isOnline ? 'pulse-marker-primary' : ''}" style="
           width: 44px;
@@ -819,51 +1146,71 @@ function OwnerMapContent() {
 
       const marker = window.L.marker([truck.lat, truck.lng], { icon: customIcon })
         .addTo(leafletMapInstanceRef.current);
-
+      
       leafletMarkersRef.current.push(marker);
     }
 
     // C. 합법 스팟 레이어 렌더링 (초록 🏛️ 아이콘)
     if (showSpots) {
       legalSpotsList.forEach(spot => {
+        const spotLat = parseFloat(spot.lat || spot.latitude);
+        const spotLng = parseFloat(spot.lng || spot.longitude);
+        if (isNaN(spotLat) || isNaN(spotLng)) return;
+
         // 반경 필터 적용
         if (searchRadius) {
-          const dist = getDistance(myLocation.lat, myLocation.lng, spot.lat, spot.lng);
+          const dist = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
           if (dist > searchRadius) return;
         }
 
         const spotHtml = `
           <div style="
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            border: 3px solid #00B894;
+            position: relative;
+            width: 61px;
+            height: 61px;
+            background: #1e3799; /* 고급스러운 남색 핀 */
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 15px rgba(0,184,148,0.25);
-            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(30, 55, 153, 0.45);
+            border: 2.5px solid #FFFFFF;
           ">
-            <span style="font-size: 1.1rem;">🏛️</span>
+            <div style="
+              width: 42px;
+              height: 42px;
+              background: #FFFFFF;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transform: rotate(45deg);
+            ">
+              <span style="font-size: 1.55rem; line-height: 1;">🚚</span>
+            </div>
           </div>
         `;
 
         const customIcon = window.L.divIcon({
           html: spotHtml,
           className: 'custom-osm-spot-marker',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18]
+          iconSize: [61, 61],
+          iconAnchor: [30, 61] // 핀 하단 중앙에 좌표 맞춤
         });
 
-        const marker = window.L.marker([spot.lat, spot.lng], { icon: customIcon })
+        const marker = window.L.marker([spotLat, spotLng], { icon: customIcon })
           .addTo(leafletMapInstanceRef.current);
 
         const markerEl = marker.getElement();
         if (markerEl) {
           markerEl.style.cursor = 'pointer';
           markerEl.addEventListener('click', () => {
-            setSelectedItem(spot);
+            setSelectedItem({
+              ...spot,
+              lat: spotLat,
+              lng: spotLng
+            });
             setItemType('spot');
           });
         }
@@ -874,7 +1221,7 @@ function OwnerMapContent() {
 
     // D. 주변 행사 정보 레이어 렌더링 (보라 🎆 아이콘)
     if (showEvents) {
-      MOCK_EVENTS.forEach(ev => {
+      eventsList.forEach(ev => {
         // 반경 필터 적용
         if (searchRadius) {
           const dist = getDistance(myLocation.lat, myLocation.lng, ev.lat, ev.lng);
@@ -883,26 +1230,34 @@ function OwnerMapContent() {
 
         const evHtml = `
           <div style="
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            border: 3px solid #9B59B6;
+            position: relative;
+            width: 61px;
+            height: 61px;
+            background: #f1c40f; /* 노란색 핀 */
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 15px rgba(155,89,182,0.25);
-            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(241, 196, 15, 0.45);
+            border: 2.5px solid #FFFFFF;
           ">
-            <span style="font-size: 1.1rem;">🎆</span>
+            <div style="
+              transform: rotate(45deg);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            ">
+              <span style="font-size: 2rem; color: #FFFFFF; line-height: 1;">★</span>
+            </div>
           </div>
         `;
 
         const customIcon = window.L.divIcon({
           html: evHtml,
           className: 'custom-osm-event-marker',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18]
+          iconSize: [61, 61],
+          iconAnchor: [30, 61] // 핀 하단 중앙에 좌표 맞춤
         });
 
         const marker = window.L.marker([ev.lat, ev.lng], { icon: customIcon })
@@ -937,7 +1292,7 @@ function OwnerMapContent() {
     }
 
     const newStatus = truck.status === 'active' ? 'prepare' : 'active';
-
+    
     if (newStatus === 'active') {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -965,7 +1320,7 @@ function OwnerMapContent() {
               lat = center.lat;
               lng = center.lng;
             }
-
+            
             const updated = {
               ...truck,
               status: 'active',
@@ -1014,11 +1369,11 @@ function OwnerMapContent() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', width: '100vw', backgroundColor: 'var(--background)', paddingBottom: isMobile ? '64px' : '0' }}>
-
+      
       {/* 네이버 지도 API SDK 동적 로드 */}
       {apiKey && !isMapError && (
         <Script
-          src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${apiKey}`}
+          src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${apiKey}&submodules=geocoder`}
           strategy="lazyOnload"
           onLoad={() => setIsSdkLoaded(true)}
           onError={() => {
@@ -1051,6 +1406,52 @@ function OwnerMapContent() {
       {/* 사장님 네비게이션 헤더 */}
       <Navbar userType="owner" truckStatus={truck?.status} />
 
+      {/* 🔍 [김유환 추가] 동네 / 주소 검색 바 */}
+      <div style={{
+        padding: '12px 24px',
+        background: '#FFFFFF',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        gap: '8px',
+        alignItems: 'center',
+        zIndex: 51,
+      }}>
+        <input
+          type="text"
+          placeholder="동네 이름 또는 도로명 주소를 입력하세요 (예: 서초동, 여의도)"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSearchAddress();
+          }}
+          style={{
+            flex: 1,
+            padding: '12px 14px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)',
+            background: 'rgba(0, 0, 0, 0.02)',
+            fontSize: '0.9rem',
+            outline: 'none'
+          }}
+        />
+        <button
+          onClick={handleSearchAddress}
+          style={{
+            padding: '12px 18px',
+            borderRadius: '12px',
+            background: 'var(--primary)',
+            color: '#FFFFFF',
+            border: 'none',
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-neon)'
+          }}
+        >
+          🔍 검색
+        </button>
+      </div>
+
       {/* 정보 레이어 토글 컨트롤러 바 */}
       <div style={{
         padding: '12px 24px',
@@ -1079,7 +1480,7 @@ function OwnerMapContent() {
           >
             🟢 허가 스팟 구역
           </button>
-
+          
           <button
             onClick={() => setShowEvents(!showEvents)}
             className="glass-panel"
@@ -1128,242 +1529,508 @@ function OwnerMapContent() {
         )}
       </div>
 
-      {/* 지도 및 컨트롤 영역 */}
-      <div style={{ flex: 1, position: 'relative' }}>
-
-        {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
-        <div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
-
-        {/* 🌤️ 내 주변 실시간 기상 날씨 칩 */}
-        {weatherData && (
-          <div style={{
-            position: 'absolute',
-            top: '16px',
-            left: '16px',
-            zIndex: 99,
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid var(--border)',
-            borderRadius: '20px',
-            padding: '8px 14px',
-            fontSize: '0.75rem',
-            fontWeight: '700',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            color: 'var(--text-main)'
-          }}>
-            <span style={{ fontSize: '1rem' }}>{weatherData.icon}</span>
-            <span>내 주변 날씨: <strong style={{ color: 'var(--primary)' }}>{weatherData.temp}°C</strong> ({weatherData.statusText})</span>
-          </div>
-        )}
-
-        {/* ⭕ 내 위치 기준 반경 필터 컨트롤 바 */}
+      {/* 지도 및 컨트롤 영역 (상권 요약 사이드바가 장착된 2단 분할 레이아웃) */}
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: isMobile ? 'column-reverse' : 'row', 
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        
+        {/* 📊 [김유환 추가] 좌측 3km 상권 분석 가이드 패널 */}
         <div style={{
-          position: 'absolute',
-          bottom: '24px',
-          right: '84px',
-          zIndex: 99,
-          background: 'rgba(255, 255, 255, 0.9)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          padding: '6px',
+          width: isMobile ? '100%' : '380px',
+          height: isMobile ? '280px' : '100%',
+          background: '#FFFFFF',
+          borderRight: isMobile ? 'none' : '1px solid var(--border)',
+          borderTop: isMobile ? '1px solid var(--border)' : 'none',
           display: 'flex',
-          gap: '4px',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+          flexDirection: 'column',
+          zIndex: 10,
+          boxShadow: 'var(--shadow-lg)'
         }}>
-          {[
-            { label: '500m', value: 500 },
-            { label: '1km', value: 1000 },
-            { label: '3km', value: 3000 }
-          ].map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setSearchRadius(opt.value)}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '10px',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                border: 'none',
-                cursor: 'pointer',
-                background: searchRadius === opt.value ? '#FF6B35' : 'transparent',
-                color: searchRadius === opt.value ? '#FFFFFF' : 'var(--text-secondary)',
-                transition: 'all 0.2s'
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-          {searchRadius && (
-            <button
-              onClick={() => setSearchRadius(null)}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '10px',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                border: 'none',
-                cursor: 'pointer',
-                background: 'rgba(214, 48, 49, 0.1)',
-                color: '#D63031',
-                transition: 'all 0.2s'
-              }}
-            >
-              ❌ 해제
-            </button>
-          )}
-        </div>
-
-        {/* 예비 지도 로딩 안내 오버레이 */}
-        {isMapError && !isLeafletLoaded && (
+          {/* 패널 타이틀 */}
           <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            background: 'rgba(250, 250, 252, 0.9)',
+            padding: '16px 20px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface-light)',
             display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-            gap: '12px',
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}>
-            <span style={{ fontSize: '1.8rem' }}>🔄</span>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
-              예비 지도(오픈스트리트맵)를 구성하고 있습니다...
-            </p>
-          </div>
-        )}
-
-        {/* 이중화 가동중 알림 태그 */}
-        {isMapError && isLeafletLoaded && (
-          <div style={{
-            position: 'absolute',
-            top: '16px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(255, 107, 53, 0.95)',
-            color: '#FFFFFF',
-            padding: '8px 14px',
-            borderRadius: '20px',
-            fontSize: '0.75rem',
-            fontWeight: '700',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
-            zIndex: 99,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}>
-            <span>🛡️</span>
-            <span>예비 오픈스트리트맵(OSM) 모드로 가동 중입니다.</span>
-          </div>
-        )}
-
-        {/* 🔄 실시간 위치 및 정보 동기화 버튼 */}
-        <button
-          onClick={() => {
-            // 1. 최신 트럭 정보 localStorage로부터 갱신
-            if (session) {
-              const freshTruck = getTruckInfo(session.username);
-              setTruck(freshTruck);
-            }
-
-            // 2. 현재 GPS 위치 감지 후 지도 중심 이동
-            if (navigator.geolocation) {
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                  setMyLocation(newPos);
-                  // 네이버 지도 중심 이동
-                  if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
-                    naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(newPos.lat, newPos.lng));
-                  }
-                  // Leaflet 지도 중심 이동
-                  if (leafletMapInstanceRef.current && window.L) {
-                    leafletMapInstanceRef.current.setView([newPos.lat, newPos.lng], 14);
-                  }
-                  alert("🔄 실시간 GPS 위치와 트럭 데이터 동기화가 완료되었습니다!");
-                },
-                (err) => {
-                  console.warn("GPS 갱신 실패:", err);
-                  alert("⚠️ GPS 신호를 찾을 수 없어 지도 중심점을 동기화하지 못했습니다. (권한 설정을 확인해주세요)");
-                }
-              );
-            } else {
-              alert("⚠️ 이 브라우저는 위치 정보(GPS) 조회를 지원하지 않습니다.");
-            }
-          }}
-          className="glass-panel-hover"
-          style={{
-            position: 'absolute',
-            bottom: isMobile ? '20px' : '24px',
-            right: '24px',
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            background: '#FFFFFF',
-            border: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.2rem',
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: 40,
-            cursor: 'pointer',
-          }}
-          title="실시간 내 위치 동기화"
-        >
-          🔄
-        </button>
-
-        {/* 🟢🔴 영업 제어 원터치 플로팅 위젯 */}
-        {truck && (
-          <div style={{
-            position: 'absolute',
-            bottom: isMobile ? '20px' : '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 40,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <button
-              onClick={handleToggleSales}
-              style={{
-                width: '180px',
-                height: '56px',
-                borderRadius: '28px',
-                color: '#FFF',
-                fontWeight: '700',
-                fontSize: '1rem',
-                border: '1px solid rgba(255,255,255,0.1)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                background: truck.status === 'active'
-                  ? 'linear-gradient(135deg, var(--danger) 0%, #ff7675 100%)'
-                  : 'linear-gradient(135deg, var(--success) 0%, #55efc4 100%)',
-              }}
-              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05) translateY(-2px)'}
-              onMouseLeave={(e) => e.target.style.transform = 'scale(1) translateY(0)'}
-            >
-              {truck.status === 'active' ? '🛑 영업 종료하기' : '🟢 영업 시작하기'}
-            </button>
-            <span className="glass-panel" style={{
-              fontSize: '0.75rem',
-              padding: '4px 10px',
-              color: truck.status === 'active' ? 'var(--success)' : 'var(--text-secondary)'
+            <h5 style={{ margin: 0, fontWeight: '800', fontSize: '0.9rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              🎯 {searchRadius ? `주변 ${searchRadius >= 1000 ? `${searchRadius/1000}km` : `${searchRadius}m`} 상권 요약` : '주변 상권 요약 (거리제한 해제)'}
+            </h5>
+            <span style={{
+              fontSize: '0.72rem',
+              fontWeight: '700',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: 'rgba(255, 107, 53, 0.1)',
+              color: 'var(--primary)'
             }}>
-              {truck.status === 'active' ? '소비자 지도에 마커 노출 중' : '비활성 상태 (지도에 안보임)'}
+              {searchRadius ? `${searchRadius/1000}km 필터 작동중` : '필터 해제됨'}
             </span>
           </div>
-        )}
+
+          {/* 패널 리스트 내용 (스크롤 적용) */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            
+            {/* A. 추천 허가 구역 목록 */}
+            <div>
+              <p style={{ margin: '0 0 8px', fontWeight: '800', fontSize: '0.8rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                🏛️ 추천 허가 구역 ({legalSpotsList.filter(s => {
+                  const spotLat = parseFloat(s.lat || s.latitude);
+                  const spotLng = parseFloat(s.lng || s.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).length}곳)
+              </p>
+
+              {/* 🔍 [김유환 추가] 정렬 탭 버튼 UI (가까운순 / 예상 유동인구순) */}
+              <div style={{
+                display: 'flex',
+                background: 'rgba(0, 0, 0, 0.04)',
+                borderRadius: '8px',
+                padding: '3px',
+                marginBottom: '12px',
+                gap: '4px'
+              }}>
+                <button
+                  onClick={() => setSortType('distance')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: '700',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: sortType === 'distance' ? '#FFFFFF' : 'transparent',
+                    color: sortType === 'distance' ? 'var(--success)' : 'var(--text-secondary)',
+                    boxShadow: sortType === 'distance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  📍 가까운 순
+                </button>
+                <button
+                  onClick={() => setSortType('population')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: '700',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: sortType === 'population' ? '#FFFFFF' : 'transparent',
+                    color: sortType === 'population' ? 'var(--success)' : 'var(--text-secondary)',
+                    boxShadow: sortType === 'population' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  👥 예상 유동인구 순
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {legalSpotsList.filter(s => {
+                  const spotLat = parseFloat(s.lat || s.latitude);
+                  const spotLng = parseFloat(s.lng || s.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).sort((a, b) => {
+                  // 🔍 [김유환 추가] 실시간 정렬 로직 적용
+                  const aLat = parseFloat(a.lat || a.latitude);
+                  const aLng = parseFloat(a.lng || a.longitude);
+                  const bLat = parseFloat(b.lat || b.latitude);
+                  const bLng = parseFloat(b.lng || b.longitude);
+
+                  if (sortType === 'distance') {
+                    const distA = getDistance(myLocation.lat, myLocation.lng, aLat, aLng);
+                    const distB = getDistance(myLocation.lat, myLocation.lng, bLat, bLng);
+                    return distA - distB; // 가까운 거리 순 정렬 (오름차순)
+                  } else {
+                    const popA = getEstimatedPopulation(a);
+                    const popB = getEstimatedPopulation(b);
+                    return popB - popA; // 예상 유동인구가 높은 순 정렬 (내림차순)
+                  }
+                }).map(spot => {
+                  const spotLat = parseFloat(spot.lat || spot.latitude);
+                  const spotLng = parseFloat(spot.lng || spot.longitude);
+                  const distance = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
+                  return (
+                    <div 
+                      key={spot.id}
+                      onClick={() => {
+                        setMyLocation({ lat: spotLat, lng: spotLng });
+                        setSelectedItem({
+                          ...spot,
+                          lat: spotLat,
+                          lng: spotLng
+                        });
+                        setItemType('spot');
+                      }}
+                      style={{
+                        padding: '12px',
+                        background: 'rgba(0, 184, 148, 0.02)',
+                        border: '1px solid rgba(0, 184, 148, 0.12)',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 184, 148, 0.06)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0, 184, 148, 0.02)'}
+                    >
+                      <p style={{ fontWeight: '700', fontSize: '0.78rem', margin: '0 0 4px', color: 'var(--text-main)' }}>{spot.name}</p>
+                      
+                      {/* 🔍 [김유환 추가] 예상 유동인구 칩 및 실시간 기준 위치 거리 칩 노출 */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        <span style={{
+                          fontSize: '0.62rem',
+                          fontWeight: '800',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: 'rgba(9, 132, 227, 0.08)',
+                          color: '#0984e3'
+                        }}>
+                          👥 유동인구: {getEstimatedPopulation(spot).toLocaleString()}명/일
+                        </span>
+                        <span style={{
+                          fontSize: '0.62rem',
+                          fontWeight: '800',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: 'rgba(255, 107, 53, 0.08)',
+                          color: 'var(--primary)'
+                        }}>
+                          🚗 {distance >= 1000 ? `${(distance/1000).toFixed(1)}km` : `${Math.round(distance)}m`}
+                        </span>
+                      </div>
+
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0 0 2px' }}>📍 {spot.address || (spot.rules && spot.rules.includes('소재지:') ? spot.rules.split('|')[2].replace('소재지:', '').trim() : '소재지 미정')}</p>
+                      <p style={{ fontSize: '0.66rem', color: 'var(--text-muted)', margin: 0 }}>⏱️ {spot.permittedHours || (spot.rules && spot.rules.includes('운영시간:') ? spot.rules.split('|')[1].replace('운영시간:', '').trim() : '영업시간 미정')}</p>
+                    </div>
+                  );
+                })}
+                {legalSpotsList.filter(s => {
+                  const spotLat = parseFloat(s.lat || s.latitude);
+                  const spotLng = parseFloat(s.lng || s.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, spotLat, spotLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).length === 0 && (
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '12px' }}>반경 내 추천 스팟이 없습니다.</p>
+                )}
+              </div>
+            </div>
+
+            {/* B. 개최 축제 / 행사 목록 - 한상 사이드바에 노출 (반경 필터 연동) */}
+            <div>
+              <p style={{ margin: '0 0 8px', fontWeight: '800', fontSize: '0.8rem', color: '#9B59B6', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                🍡 주변 행사/축제 ({eventsList.filter(e => {
+                  const eLat = parseFloat(e.lat || e.latitude);
+                  const eLng = parseFloat(e.lng || e.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, eLat, eLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).length}건)
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {eventsList.filter(e => {
+                  const eLat = parseFloat(e.lat || e.latitude);
+                  const eLng = parseFloat(e.lng || e.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, eLat, eLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).map(ev => {
+                  const eLat = parseFloat(ev.lat || ev.latitude);
+                  const eLng = parseFloat(ev.lng || ev.longitude);
+                  return (
+                    <div 
+                      key={ev.id}
+                      onClick={() => {
+                        setMyLocation({ lat: eLat, lng: eLng });
+                        setSelectedItem({ ...ev, lat: eLat, lng: eLng });
+                        setItemType('event');
+                      }}
+                      style={{
+                        padding: '12px',
+                        background: 'rgba(155, 89, 182, 0.02)',
+                        border: '1px solid rgba(155, 89, 182, 0.12)',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(155, 89, 182, 0.06)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(155, 89, 182, 0.02)'}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', marginBottom: '4px' }}>
+                        <p style={{ fontWeight: '700', fontSize: '0.78rem', margin: 0, color: 'var(--text-main)' }}>{ev.name}</p>
+                        {ev.source && (
+                          <span style={{
+                            fontSize: '0.55rem',
+                            fontWeight: '800',
+                            padding: '1px 5px',
+                            borderRadius: '3px',
+                            background: 'rgba(155, 89, 182, 0.1)',
+                            color: '#9B59B6',
+                            whiteSpace: 'nowrap'
+                          }}>{ev.source.replace(' 표준데이터', '')}</span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0 0 2px' }}>📍 {ev.location || (ev.desc && ev.desc.includes('소재지:') ? ev.desc.split('|')[2]?.replace('소재지:', '').trim() : '소재지 미정')}</p>
+                      <p style={{ fontSize: '0.66rem', color: 'var(--accent)', margin: 0 }}>📅 {ev.startDate || ev.desc?.split('|')[0]?.replace('기간:', '').trim() || '일정 미정'}</p>
+                    </div>
+                  );
+                })}
+                {eventsList.filter(e => {
+                  const eLat = parseFloat(e.lat || e.latitude);
+                  const eLng = parseFloat(e.lng || e.longitude);
+                  const dist = getDistance(myLocation.lat, myLocation.lng, eLat, eLng);
+                  return !searchRadius || dist <= searchRadius;
+                }).length === 0 && (
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '12px' }}>선택한 반경 내 개최 행사가 없습니다.</p>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* 🗺️ 지도 영역 */}
+        <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+          
+          {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
+          <div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
+
+          {/* 🌤️ 내 주변 실시간 기상 날씨 칩 */}
+          {weatherData && (
+            <div style={{
+              position: 'absolute',
+              top: '16px',
+              left: '16px',
+              zIndex: 99,
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid var(--border)',
+              borderRadius: '20px',
+              padding: '8px 14px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: 'var(--text-main)'
+            }}>
+              <span style={{ fontSize: '1rem' }}>{weatherData.icon}</span>
+              <span>내 주변 날씨: <strong style={{ color: 'var(--primary)' }}>{weatherData.temp}°C</strong> ({weatherData.statusText})</span>
+            </div>
+          )}
+
+          {/* ⭕ 내 위치 기준 반경 필터 컨트롤 바 */}
+          <div style={{
+            position: 'absolute',
+            bottom: '24px',
+            right: '84px',
+            zIndex: 99,
+            background: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px',
+            padding: '6px',
+            display: 'flex',
+            gap: '4px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+          }}>
+            {[
+              { label: '500m', value: 500 },
+              { label: '1km', value: 1000 },
+              { label: '3km', value: 3000 }
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setSearchRadius(opt.value)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: searchRadius === opt.value ? '#FF6B35' : 'transparent',
+                  color: searchRadius === opt.value ? '#FFFFFF' : 'var(--text-secondary)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+            {searchRadius && (
+              <button
+                onClick={() => setSearchRadius(null)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: 'rgba(214, 48, 49, 0.1)',
+                  color: '#D63031',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ❌ 해제
+              </button>
+            )}
+          </div>
+
+          {/* 예비 지도 로딩 안내 오버레이 */}
+          {isMapError && !isLeafletLoaded && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              background: 'rgba(250, 250, 252, 0.9)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 100,
+              gap: '12px',
+            }}>
+              <span style={{ fontSize: '1.8rem' }}>🔄</span>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                예비 지도(오픈스트리트맵)를 구성하고 있습니다...
+              </p>
+            </div>
+          )}
+
+          {/* 이중화 가동중 알림 태그 */}
+          {isMapError && isLeafletLoaded && (
+            <div style={{
+              position: 'absolute',
+              top: '16px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(255, 107, 53, 0.95)',
+              color: '#FFFFFF',
+              padding: '8px 14px',
+              borderRadius: '20px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
+              zIndex: 99,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}>
+              <span>🛡️</span>
+              <span>예비 오픈스트리트맵(OSM) 모드로 가동 중입니다.</span>
+            </div>
+          )}
+
+          {/* 🔄 실시간 위치 및 정보 동기화 버튼 */}
+          <button
+            onClick={() => {
+              if (session) {
+                const freshTruck = getTruckInfo(session.username);
+                setTruck(freshTruck);
+              }
+              
+              if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setMyLocation(newPos);
+                    if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+                      naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(newPos.lat, newPos.lng));
+                    }
+                    if (leafletMapInstanceRef.current && window.L) {
+                      leafletMapInstanceRef.current.setView([newPos.lat, newPos.lng], 14);
+                    }
+                    alert("🔄 실시간 GPS 위치와 트럭 데이터 동기화가 완료되었습니다!");
+                  },
+                  (err) => {
+                    console.warn("GPS 갱신 실패:", err);
+                    alert("⚠️ GPS 신호를 찾을 수 없어 지도 중심점을 동기화하지 못했습니다. (권한 설정을 확인해주세요)");
+                  }
+                );
+              } else {
+                alert("⚠️ 이 브라우저는 위치 정보(GPS) 조회를 지원하지 않습니다.");
+              }
+            }}
+            className="glass-panel-hover"
+            style={{
+              position: 'absolute',
+              bottom: isMobile ? '20px' : '24px',
+              right: '24px',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: '#FFFFFF',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.2rem',
+              boxShadow: 'var(--shadow-lg)',
+              zIndex: 40,
+              cursor: 'pointer',
+            }}
+            title="실시간 내 위치 동기화"
+          >
+            🔄
+          </button>
+
+          {/* 🟢🔴 영업 제어 원터치 플로팅 위젯 */}
+          {truck && (
+            <div style={{
+              position: 'absolute',
+              bottom: isMobile ? '20px' : '24px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 40,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <button
+                onClick={handleToggleSales}
+                style={{
+                  width: '180px',
+                  height: '56px',
+                  borderRadius: '28px',
+                  color: '#FFF',
+                  fontWeight: '700',
+                  fontSize: '1rem',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  background: truck.status === 'active' 
+                     ? 'linear-gradient(135deg, var(--danger) 0%, #ff7675 100%)'
+                     : 'linear-gradient(135deg, var(--success) 0%, #55efc4 100%)',
+                }}
+                onMouseEnter={(e) => e.target.style.transform = 'scale(1.05) translateY(-2px)'}
+                onMouseLeave={(e) => e.target.style.transform = 'scale(1) translateY(0)'}
+              >
+                {truck.status === 'active' ? '🛑 영업 종료하기' : '🟢 영업 시작하기'}
+              </button>
+              <span className="glass-panel" style={{
+                fontSize: '0.75rem',
+                padding: '4px 10px',
+                color: truck.status === 'active' ? 'var(--success)' : 'var(--text-secondary)'
+              }}>
+                {truck.status === 'active' ? '소비자 지도에 마커 노출 중' : '비활성 상태 (지도에 안보임)'}
+              </span>
+            </div>
+          )}
+
+        </div>
 
       </div>
 
@@ -1378,21 +2045,82 @@ function OwnerMapContent() {
       >
         {selectedItem && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                {selectedItem.name}
+              </h4>
+              {selectedItem.isMock && (
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: '800',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: 'rgba(9, 132, 227, 0.1)',
+                  color: '#0984e3',
+                  border: '1px solid rgba(9, 132, 227, 0.2)'
+                }}>
+                  더미데이터 🧪
+                </span>
+              )}
+            </div>
 
-            <h4 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-              {selectedItem.name}
-            </h4>
+            {/* 🧭 [김유환 추가] 네이버 지도 실시간 길안내 바로가기 (기존 빈 영역 대치) */}
+            {itemType === 'spot' && (
+              <div style={{
+                background: 'var(--surface-light)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                  🧭 내 위치에서 길안내 (목적지 자동 입력)
+                </span>
+                <button
+                  onClick={() => handleOpenNavigation(selectedItem)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#03C75A', // 네이버 그린
+                    color: '#FFFFFF',
+                    border: 'none',
+                    fontWeight: '800',
+                    fontSize: '0.76rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 6px rgba(3,199,90,0.2)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                >
+                  네이버 지도로 길찾기 시작 🟢
+                </button>
+              </div>
+            )}
 
+            {/* 📋 [김유환 추가] 규칙 및 상세 설명 텍스트 (위치 조절 및 rules 속성 버그 수정) */}
             <p style={{
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               color: 'var(--text-secondary)',
               lineHeight: '1.6',
-              background: 'var(--surface-light)',
-              padding: '12px',
-              borderRadius: '8px',
-              border: '1px solid var(--border)'
+              background: '#FFFFFF',
+              padding: '12px 14px',
+              borderRadius: '10px',
+              border: '1px solid var(--border-light)',
+              margin: 0
             }}>
-              {itemType === 'spot' ? selectedItem.rules : selectedItem.desc}
+              {itemType === 'spot' 
+                ? (selectedItem.rules || selectedItem.description || "이 구역은 지정된 조건(운영시간 준수 및 주변 정리정돈) 하에 합법적 영업이 허가된 추천 구역입니다.") 
+                : selectedItem.desc
+              }
             </p>
 
             {/* 🌤️ 해당 구역 실시간 기상청 날씨 */}
@@ -1418,6 +2146,210 @@ function OwnerMapContent() {
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>🔄 날씨 조회 중...</span>
               )}
             </div>
+
+            {/* 🎪 [김유환 추가] 주변 3km 내 실시간 축제/행사 연동 (itemType === 'spot' 일 때만 표출) */}
+            {itemType === 'spot' && (
+              <div style={{
+                background: 'var(--surface-light)',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                border: '1px solid var(--border)',
+                maxHeight: '160px',
+                overflowY: 'auto'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🎪 주변 개최 축제 (반경 3km)</span>
+                  {isEventsMock && (
+                    <span style={{
+                      fontSize: '0.58rem',
+                      fontWeight: '800',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'rgba(155, 89, 182, 0.1)',
+                      color: '#9B59B6',
+                      border: '1px solid rgba(155, 89, 182, 0.2)'
+                    }}>
+                      더미데이터 🎪
+                    </span>
+                  )}
+                </div>
+                {spotEvents && spotEvents.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {spotEvents.map(evt => (
+                      <div key={evt.id} style={{
+                        background: '#FFFFFF',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        fontSize: '0.78rem'
+                      }}>
+                        <p style={{ fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 2px' }}>{evt.name}</p>
+                        <p style={{ color: 'var(--text-secondary)', margin: '0 0 2px', fontSize: '0.72rem' }}>📍 {evt.location}</p>
+                        <p style={{ color: 'var(--accent)', margin: '0 0 2px', fontSize: '0.72rem', fontWeight: '600' }}>📅 {evt.startDate} ~ {evt.endDate}</p>
+                        <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.72rem', lineHeight: '1.4' }}>{evt.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', padding: '10px 0' }}>
+                    📍 주변 3km 내에 예정된 축제가 없습니다.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* 📊 [김유환 추가] 실시간 상권 정밀 분석 가이드 카드 */}
+            {itemType === 'spot' && (
+              <div style={{
+                background: 'var(--surface-light)',
+                borderRadius: '12px',
+                padding: '16px',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    📊 상권 정밀 분석 가이드
+                  </span>
+                  {commercialData && commercialData.isMock && (
+                    <span style={{
+                      fontSize: '0.55rem',
+                      fontWeight: '800',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'rgba(9, 132, 227, 0.1)',
+                      color: '#0984e3',
+                      border: '1px solid rgba(9, 132, 227, 0.2)'
+                    }}>
+                      시뮬레이션 분석 🧪
+                    </span>
+                  )}
+                </div>
+
+                {/* A. 경쟁 업체 분석 */}
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  border: '1px solid var(--border-light)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                      ⚔️ 반경 1km 내 요식업(음식점) 경쟁 매장 수
+                    </span>
+                    {isCommercialLoading ? (
+                      <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>로딩 중...</span>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary)' }}>
+                          {commercialData ? `${commercialData.competitorCount}개` : '조회 실패'}
+                        </span>
+                        {commercialData && (
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: '800',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: (() => {
+                              const cnt = commercialData.competitorCount;
+                              if (cnt <= 8) return 'rgba(0, 184, 148, 0.1)';
+                              if (cnt <= 20) return 'rgba(253, 203, 110, 0.1)';
+                              return 'rgba(214, 48, 49, 0.1)';
+                            })(),
+                            color: (() => {
+                              const cnt = commercialData.competitorCount;
+                              if (cnt <= 8) return 'var(--success)';
+                              if (cnt <= 20) return '#e1b12c';
+                              return 'var(--danger)';
+                            })()
+                          }}>
+                            경쟁도: {(() => {
+                              const cnt = commercialData.competitorCount;
+                              if (cnt <= 8) return '낮음 🟢';
+                              if (cnt <= 20) return '보통 🟡';
+                              return '높음 🔴';
+                            })()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.66rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.4' }}>
+                    * 소상공인시장진흥공단 상가데이터에 기반한 해당 스팟 1km 내 요식업 경쟁 매장 수입니다. 경쟁도가 **낮을수록** 독점 영업에 유리합니다.
+                  </p>
+                </div>
+
+                {/* B. 유동인구 분석 (성별 및 연령) */}
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  border: '1px solid var(--border-light)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  {/* 성별 비율 바 그래프 */}
+                  {(() => {
+                    const demo = getDemographicAnalysis(selectedItem);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                          <span>👩 여성 {demo.gender.female}%</span>
+                          <span>👨 남성 {demo.gender.male}%</span>
+                        </div>
+                        <div style={{ display: 'flex', width: '100%', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ width: `${demo.gender.female}%`, background: '#fd79a8' }} />
+                          <div style={{ width: `${demo.gender.male}%`, background: '#0984e3' }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 연령대 비율 구성 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                      👥 연령대별 유동인구 비중 (핵심 연령: <strong style={{ color: 'var(--primary)' }}>{getDemographicAnalysis(selectedItem).mainAge}</strong>)
+                    </span>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {getDemographicAnalysis(selectedItem).ageGroups.map((age, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'rgba(0,0,0,0.02)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: '700',
+                            color: 'var(--text-main)'
+                          }}
+                        >
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: age.color
+                          }} />
+                          <span>{age.label}: {age.ratio}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
               {itemType === 'spot' && truck && (
