@@ -233,6 +233,18 @@ export default function AdminApisPage() {
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🟡 신규 검수 대기</div>
               <div style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--warning)' }}>{stats.pending} <span style={{ fontSize: '1rem', fontWeight: '500' }}>곳</span></div>
             </div>
+
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid #0984e3' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>⛅ 기상청 날씨 (대표)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0984e3', marginTop: '6px' }}>{stats?.weather || "조회 중..."}</div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid #6c5ce7' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🗺️ 네이버 API 소모율</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#6c5ce7', marginTop: '6px' }}>
+                {(((stats?.naverTotal || 0) / 10000) * 100).toFixed(1)}% <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>({(stats?.naverTotal || 0).toLocaleString()}건)</span>
+              </div>
+            </div>
           </div>
 
           {/* API 리스트 및 검수/조정 토글 패널 */}

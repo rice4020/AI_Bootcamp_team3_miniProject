@@ -350,8 +350,15 @@ export async function GET(request) {
     const api3Total = syncStatus["api-3"]?.collectedCount || 3420;
     const api3TotalPages = Math.ceil(api3Total / limit);
 
-    // 📊 푸드트럭 승인 현황 통계 수치 초기화
-    let stats = { total: 0, approved: 0, rejected: 0, pending: 0 };
+    // 📊 통합 API 종합 대시보드 통계 수치 초기화 및 기 기입
+    let stats = { 
+      total: 0, 
+      approved: 0, 
+      rejected: 0, 
+      pending: 0,
+      weather: mockWeatherDetails[0]?.value || "맑음, 24.5°C",
+      naverTotal: api3Total
+    };
 
     // 각 API별 요청 페이지 파싱 (기본값: 1페이지, 한 페이지당 10개 고정)
     const pageApi1 = parseInt(searchParams.get('page_api1') || '1') || 1;
