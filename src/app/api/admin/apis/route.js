@@ -310,6 +310,7 @@ export async function GET(request) {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
         `);
+        await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
 
         // 💡 테이블 데이터가 텅 비었는지(0건) 확인하여 비어있다면 자동 시딩(Seeding) 수행
         const countCheck = await dbPool.query('SELECT COUNT(*) as count FROM legal_spots');
@@ -606,6 +607,7 @@ export async function POST(request) {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
         `);
+        await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
       } catch (tableErr) {
         console.error("Neon DB 테이블 자동 생성 실패:", tableErr.message);
       }
