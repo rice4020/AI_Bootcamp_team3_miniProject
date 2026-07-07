@@ -105,6 +105,110 @@ export default function UserMainPage() {
   const [weatherData, setWeatherData] = useState(null); // 내 위치 주변 날씨
   const [selectedSpotWeather, setSelectedSpotWeather] = useState(null); // 선택한 트럭 상세 날씨
 
+  // 💬 방명록 및 예약 연동 State 선언
+  const [reviewsList, setReviewsList] = useState([]);
+  const [revNickname, setRevNickname] = useState('');
+  const [revStars, setRevStars] = useState(5);
+  const [revComment, setRevComment] = useState('');
+  
+  const [catName, setCatName] = useState('');
+  const [catPhone, setCatPhone] = useState('');
+  const [catDate, setCatDate] = useState('');
+  const [catScale, setCatScale] = useState(30);
+  const [catAddress, setCatAddress] = useState('');
+  const [catDetails, setCatDetails] = useState('');
+
+  // 📡 서버 방명록(리뷰) 목록 수신 함수
+  const fetchReviews = async () => {
+    try {
+      const res = await fetch('/api/reviews');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setReviewsList(json.data);
+        }
+      }
+    } catch (err) {
+      console.error("리뷰 수신 에러:", err);
+    }
+  };
+
+  // 📝 방명록(리뷰) 신규 작성 핸들러
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!revNickname.trim() || !revComment.trim()) {
+      alert("닉네임과 한줄평을 입력해 주세요!");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: revNickname,
+          stars: revStars,
+          comment: revComment
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          alert("🎉 방명록 등록이 완료되었습니다!");
+          setRevNickname('');
+          setRevComment('');
+          setRevStars(5);
+          fetchReviews();
+        }
+      }
+    } catch (err) {
+      alert("방명록 등록 중 에러 발생: " + err.message);
+    }
+  };
+
+  // 📅 케이터링 예약 신청 제출 핸들러
+  const handleCateringSubmit = async (e) => {
+    e.preventDefault();
+    if (!catName.trim() || !catAddress.trim()) {
+      alert("신청자명과 행사 장소 주소는 필수 입력 사항입니다!");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: catName,
+          phone: catPhone,
+          date: catDate,
+          scale: `${catScale}명`,
+          address: catAddress,
+          menu: catDetails || '선택 없음'
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          alert("📅 케이터링 예약 신청이 완료되었습니다!\n사장님이 확인 후 기재하신 연락처로 연락드리겠습니다.");
+          setCatName('');
+          setCatPhone('');
+          setCatDate('');
+          setCatScale(30);
+          setCatAddress('');
+          setCatDetails('');
+        }
+      }
+    } catch (err) {
+      alert("예약 등록 중 에러 발생: " + err.message);
+    }
+  };
+
+  // 최초 로드 시 방명록 수신 기동
+  useEffect(() => {
+    fetchReviews();
+  }, []);
+
   const apiKey = process.env.NEXT_PUBLIC_NAVER_MAP_KEY; // 네이버 지도 Client ID
 
   // 🌤️ 내 위치 기반 기상청 실시간 날씨 갱신 훅
@@ -203,55 +307,62 @@ export default function UserMainPage() {
 
   // 2. 실시간 로컬 DB 데이터와 고정 Mock 데이터를 실시간 병합
   useEffect(() => {
-    initDb();
-    
-    // 사장님들이 가입하고 변경한 실제 트럭 데이터
-    const storedTrucks = JSON.parse(localStorage.getItem("roadfood_trucks") || "[]");
-    const combined = [...MOCK_TRUCKS];
+    const fetchServerTrucks = async () => {
+      try {
+        const res = await fetch('/api/trucks');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const combined = [...MOCK_TRUCKS];
+            json.data.forEach(st => {
+              const formatted = {
+                id: st.id || st.ownerUsername || Math.random(),
+                name: st.name,
+                category: st.category,
+                lat: st.lat,
+                lng: st.lng,
+                status: st.status,
+                ownerName: st.ownerUsername,
+                phone: "010-1234-5678",
+                intro: st.intro,
+                menu: st.menu || [],
+                stock: st.stock || 0,
+                waitingTeams: st.waitingTeams || 0,
+                snsText: st.snsText || ''
+              };
 
-    storedTrucks.forEach(st => {
-      // 영업중(active)이거나 로컬 저장된 상태를 일반 유저 맵 마커 리스트로 포맷팅
-      const formatted = {
-        id: st.id || st.ownerUsername || Math.random(),
-        name: st.name,
-        category: st.category,
-        lat: st.lat,
-        lng: st.lng,
-        status: st.status,
-        ownerName: st.ownerUsername,
-        phone: "010-1234-5678",
-        intro: st.intro,
-        menu: st.menu || [],
-        stock: st.stock || 0,
-        waitingTeams: st.waitingTeams || 0
-      };
+              const existingIdx = combined.findIndex(t => t.ownerName === st.ownerUsername);
+              if (existingIdx !== -1) {
+                combined[existingIdx] = formatted;
+              } else {
+                combined.push(formatted);
+              }
+            });
+            setTrucksList(combined);
 
-      const existingIdx = combined.findIndex(t => t.ownerName === st.ownerUsername);
-      if (existingIdx !== -1) {
-        combined[existingIdx] = formatted;
-      } else {
-        combined.push(formatted);
-      }
-    });
-
-    setTrucksList(combined);
-
-    // 동적 카테고리 중복제거 추출
-    const defaultIds = ['all', 'snack', 'sweet', 'skewer', 'takoyaki', 'meat'];
-    const dynamicCats = [...CATEGORIES];
-    
-    combined.forEach(t => {
-      if (t.category && !defaultIds.includes(t.category)) {
-        const isExist = dynamicCats.some(c => c.id === t.category);
-        if (!isExist) {
-          dynamicCats.push({
-            id: t.category,
-            label: `${t.category} 🍴`
-          });
+            // 동적 카테고리 중복제거 추출
+            const defaultIds = ['all', 'snack', 'sweet', 'skewer', 'takoyaki', 'meat'];
+            const dynamicCats = [...CATEGORIES];
+            
+            combined.forEach(t => {
+              if (t.category && !defaultIds.includes(t.category)) {
+                const isExist = dynamicCats.some(c => c.id === t.category);
+                if (!isExist) {
+                  dynamicCats.push({
+                    id: t.category,
+                    label: `${t.category} 🍴`
+                  });
+                }
+              }
+            });
+            setCategoriesList(dynamicCats);
+          }
         }
+      } catch (err) {
+        console.error("서버 트럭 목록 조회 실패:", err);
       }
-    });
-    setCategoriesList(dynamicCats);
+    };
+    fetchServerTrucks();
   }, [isModalOpen]);
 
   // 2.8 📏 두 좌표 간의 거리 계산 (Haversine 공식, 단위: 미터)
@@ -567,7 +678,7 @@ export default function UserMainPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', width: '100vw', paddingBottom: isMobile ? '64px' : '0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: 'var(--background)', paddingBottom: isMobile ? '64px' : '0' }}>
       {/* 네이버 지도 API SDK 동적 로드 */}
       {apiKey && !isMapError && (
         <Script
@@ -639,7 +750,7 @@ export default function UserMainPage() {
       </div>
 
       {/* 메인 맵 영역 */}
-      <div style={{ flex: 1, position: 'relative', background: '#FAFAFC' }}>
+      <div style={{ position: 'relative', height: isMobile ? '50vh' : '65vh', minHeight: '450px', background: '#FAFAFC', borderBottom: '1px solid var(--border)' }}>
         
         {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
         <div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
@@ -993,6 +1104,290 @@ export default function UserMainPage() {
           </div>
         </div>
       )}
+
+      {/* 5. 케이터링 예약 신청 섹션 */}
+      <section style={{ padding: '60px 24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px' }}>CATERING BOOKING</span>
+          <h2 style={{ fontSize: '2rem', fontWeight: '800', marginTop: '8px', color: 'var(--text-primary)' }}>출장 케이터링 예약 문의</h2>
+          <div style={{ width: '40px', height: '4px', background: 'var(--primary)', margin: '16px auto 0', borderRadius: '2px' }}></div>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '32px' }}>
+          {/* 정보 패널 */}
+          <div className="glass-panel" style={{ flex: 1, padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: '700', marginBottom: '16px', color: 'var(--text-primary)' }}>행사를 빛내줄 최고의 선택! 🚚</h3>
+            <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '24px' }}>
+              기업 워크숍, 대학교 축제, 방송 촬영장 서포트, 야외 파티 등 특별한 순간에 저희 푸드트럭이 직접 찾아가 맛있는 미식의 즐거움을 배달해 드립니다.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {[
+                { step: '01', title: '예약 문의 접수', desc: '우측 신청 양식을 꼼꼼하게 작성해 제출하시면 즉시 예약 대기 상태가 됩니다.' },
+                { step: '02', title: '세부 일정 및 예산 조율', desc: '행사 일자, 가격 대, 원하시는 메뉴 수량을 전화 상담으로 친절하게 맞춰 드립니다.' },
+                { step: '03', title: '예약 확정 및 현장 조리', desc: '약속된 날짜에 트럭이 1시간 일찍 도착하여 철저하게 즉석 조리를 준비합니다.' }
+              ].map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary)', background: 'rgba(255, 90, 31, 0.1)', padding: '6px 12px', borderRadius: '12px' }}>
+                    {item.step}
+                  </span>
+                  <div>
+                    <h4 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>{item.title}</h4>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* 신청 폼 패널 */}
+          <div className="glass-panel" style={{ flex: 1.2, padding: '32px' }}>
+            <form onSubmit={handleCateringSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div style={{ display: 'flex', gap: '16px', flexDirection: isMobile ? 'column' : 'row' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>신청자 / 단체명 <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="text"
+                    value={catName}
+                    onChange={(e) => setCatName(e.target.value)}
+                    placeholder="예: 홍길동 (홍길동컴퍼니)"
+                    required
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem' }}
+                  />
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>연락처 <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="tel"
+                    value={catPhone}
+                    onChange={(e) => setCatPhone(e.target.value)}
+                    placeholder="예: 010-1234-5678"
+                    required
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem' }}
+                  />
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '16px', flexDirection: isMobile ? 'column' : 'row' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>희망 일자 <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="date"
+                    value={catDate}
+                    onChange={(e) => setCatDate(e.target.value)}
+                    required
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>예상 인원수 (명) <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="number"
+                    value={catScale}
+                    onChange={(e) => setCatScale(e.target.value)}
+                    min="30"
+                    placeholder="최소 30명 이상"
+                    required
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem' }}
+                  />
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>행사 주소 장소 <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="text"
+                  value={catAddress}
+                  onChange={(e) => setCatAddress(e.target.value)}
+                  placeholder="예: 서울 마포구 상암산로 76"
+                  required
+                  style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem' }}
+                />
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>기타 요청사항</label>
+                <textarea
+                  value={catDetails}
+                  onChange={(e) => setCatDetails(e.target.value)}
+                  rows="3"
+                  placeholder="선호하시는 대표 메뉴 구성이나 특별 요청을 입력해 주세요."
+                  style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border)', background: '#FAFAFC', fontSize: '0.88rem', resize: 'none' }}
+                />
+              </div>
+              
+              <button
+                type="submit"
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  background: 'linear-gradient(135deg, #FF6B35 0%, #e84393 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 20px rgba(255, 107, 53, 0.35)',
+                  marginTop: '6px'
+                }}
+              >
+                📝 케이터링 예약 신청서 접수하기
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. 칭찬 방명록 & 리뷰 피드 섹션 */}
+      <section style={{ background: '#1A1A24', padding: '60px 24px', color: '#FFFFFF', width: '100%' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px' }}>CUSTOMER GUESTBOOK</span>
+            <h2 style={{ fontSize: '2rem', fontWeight: '800', marginTop: '8px', color: '#FFFFFF' }}>맛있는 소통, 칭찬 방명록</h2>
+            <div style={{ width: '40px', height: '4px', background: 'var(--primary)', margin: '16px auto 0', borderRadius: '2px' }}></div>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '32px' }}>
+            {/* 방명록 등록 폼 */}
+            <div style={{
+              flex: 1,
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '32px',
+              backdropFilter: 'blur(20px)'
+            }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '20px', color: '#FFFFFF' }}>방명록 한 줄 남기기 💬</h3>
+              <form onSubmit={handleReviewSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                <div style={{ display: 'flex', gap: '16px', flexDirection: isMobile ? 'column' : 'row' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '700', color: '#B2BEC3' }}>닉네임 <span style={{ color: '#E84393' }}>*</span></label>
+                    <input
+                      type="text"
+                      value={revNickname}
+                      onChange={(e) => setRevNickname(e.target.value)}
+                      placeholder="예: 핫도그매니아"
+                      required
+                      style={{ padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#FFF', fontSize: '0.88rem' }}
+                    />
+                  </div>
+                  
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '700', color: '#B2BEC3' }}>평점 별점 <span style={{ color: '#E84393' }}>*</span></label>
+                    <div style={{ display: 'flex', gap: '6px', height: '42px', alignItems: 'center' }}>
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setRevStars(star)}
+                          style={{ fontSize: '1.4rem', cursor: 'pointer', transition: 'transform 0.1s' }}
+                          onMouseEnter={(e) => e.target.style.transform = 'scale(1.2)'}
+                          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                        >
+                          {star <= revStars ? '⭐' : '☆'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '700', color: '#B2BEC3' }}>한 줄 평 <span style={{ color: '#E84393' }}>*</span></label>
+                  <input
+                    type="text"
+                    value={revComment}
+                    onChange={(e) => setRevComment(e.target.value)}
+                    placeholder="핫도그 너무 맛있고 사장님이 엄청 친절하세요! 대박나세요!"
+                    required
+                    maxLength={100}
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#FFF', fontSize: '0.88rem' }}
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'var(--primary)',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontWeight: '700',
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    boxShadow: 'var(--shadow-neon)',
+                    marginTop: '6px'
+                  }}
+                >
+                  🚀 리뷰 올리기
+                </button>
+              </form>
+            </div>
+            
+            {/* 실시간 방명록 피드 */}
+            <div style={{
+              flex: 1.5,
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: '16px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px' }}>
+                💬 실시간 방명록 피드 ({reviewsList.length})
+              </h4>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '380px', overflowY: 'auto', paddingRight: '8px' }}>
+                {reviewsList.length === 0 ? (
+                  <p style={{ textAlign: 'center', color: '#B2BEC3', padding: '40px 0', fontSize: '0.9rem' }}>첫 번째로 따뜻한 칭찬 방명록을 작성해 보세요!</p>
+                ) : (
+                  reviewsList.map((rev) => (
+                    <div
+                      key={rev.id}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.04)',
+                        border: '1px solid rgba(255, 255, 255, 0.04)',
+                        borderRadius: '12px',
+                        padding: '16px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: '800', fontSize: '0.9rem', color: '#FFF' }}>{rev.name}</span>
+                        <div style={{ display: 'flex', gap: '2px', color: '#FFC048', fontSize: '0.82rem' }}>
+                          {'⭐'.repeat(rev.stars)}
+                        </div>
+                      </div>
+                      <p style={{ fontSize: '0.88rem', color: '#DFE6E9', lineHeight: '1.4' }}>{rev.comment}</p>
+                      <span style={{ fontSize: '0.72rem', color: '#74B9FF', alignSelf: 'flex-end' }}>{rev.date}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. 푸터 */}
+      <footer style={{ background: '#111116', padding: '30px 24px', borderTop: '1px solid rgba(255,255,255,0.05)', color: '#8A8A9E', width: '100%' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: isMobile ? 'column' : 'row', gap: '16px' }}>
+          <div>
+            <p style={{ fontWeight: '800', fontSize: '1.1rem', color: '#FFF', marginBottom: '4px' }}>🚚 Delicious Road</p>
+            <p style={{ fontSize: '0.75rem' }}>&copy; 2026 Delicious Road. All rights reserved.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '16px', fontSize: '1.2rem' }}>
+            <span>📸</span>
+            <span>📺</span>
+            <span>💬</span>
+          </div>
+        </div>
+      </footer>
 
       {/* 팝업 슬라이드업 애니메이션 */}
       <style>{`

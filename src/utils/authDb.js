@@ -1,6 +1,5 @@
 /**
- * 🚚 MVP 로컬 데이터베이스 헬퍼 (localStorage 기반 Mock DB)
- * 추후 Supabase 등으로 스위칭하기 용이하도록 한곳에 모듈화합니다.
+ * 🚚 MVP 로컬 데이터베이스 헬퍼 (localStorage 기반 Mock DB + 백엔드 파일 DB 실시간 백그라운드 동기화)
  */
 
 const USERS_KEY = "roadfood_users";
@@ -10,7 +9,7 @@ const TRUCKS_KEY = "roadfood_trucks";
 // 기본 사장님 더미 계정 세팅 (테스트용)
 const DEFAULT_OWNER = {
   username: "owner123",
-  password: "password123!", // 제약 조건 만족
+  password: "password123!",
   name: "홍길동",
   phone: "010-1234-5678",
   birthdate: "1990-01-01",
@@ -18,7 +17,7 @@ const DEFAULT_OWNER = {
   needPasswordChange: false,
 };
 
-// 초기화 함수
+// 초기화 및 백그라운드 서버 동기화 함수
 export function initDb() {
   if (typeof window === "undefined") return;
   
@@ -27,7 +26,6 @@ export function initDb() {
   }
   
   if (!localStorage.getItem(TRUCKS_KEY)) {
-    // 사장님 1(owner123)의 기본 트럭 세팅
     const defaultTrucks = [
       {
         ownerUsername: "owner123",
@@ -35,7 +33,7 @@ export function initDb() {
         category: "takoyaki",
         lat: 37.5665,
         lng: 126.9780,
-        status: "prepare", // 기본 준비중
+        status: "prepare",
         intro: "신선한 문어가 가득 들어있는 정통 타코야끼!",
         menu: [
           { name: "오리지널 타코야끼 (8알)", price: 5000 },
@@ -47,6 +45,16 @@ export function initDb() {
     ];
     localStorage.setItem(TRUCKS_KEY, JSON.stringify(defaultTrucks));
   }
+
+  // 📡 백그라운드로 서버의 최신 트럭 데이터를 가져와 로컬스토리지 갱신
+  fetch('/api/trucks')
+    .then(res => res.json())
+    .then(json => {
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        localStorage.setItem(TRUCKS_KEY, JSON.stringify(json.data));
+      }
+    })
+    .catch(err => console.error("서버 트럭 데이터 동기화 실패:", err));
 }
 
 // 1. 회원가입: 아이디 중복 확인
@@ -56,7 +64,7 @@ export function checkUsernameDuplicate(username) {
   return users.some(u => u.username === username);
 }
 
-// 2. 회원가입: 사용자 등록
+// 2. 회원가입: 사용자 등록 (서버 API 동기 전송 추가)
 export function registerUser(user) {
   initDb();
   const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
@@ -67,13 +75,12 @@ export function registerUser(user) {
   
   users.push({
     ...user,
-    needPasswordChange: false // 신규 가입자는 변경 대상 아님
+    needPasswordChange: false
   });
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 
-  // 신규 가입 사장님의 기본 빈 트럭도 함께 생성
-  const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
-  trucks.push({
+  // 신규 가입 사장님의 기본 빈 트럭 생성
+  const newTruck = {
     ownerUsername: user.username,
     name: `${user.name} 사장님의 푸드트럭`,
     category: "snack",
@@ -84,8 +91,18 @@ export function registerUser(user) {
     menu: [],
     stock: 0,
     waitingTeams: 0
-  });
+  };
+
+  const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
+  trucks.push(newTruck);
   localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
+
+  // 📡 백그라운드로 서버에 등록 요청
+  fetch('/api/trucks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newTruck)
+  }).catch(err => console.error("서버 신규 트럭 등록 실패:", err));
 }
 
 // 3. 로그인 처리
@@ -102,7 +119,6 @@ export function loginUser(username, password) {
     throw new Error("운영진에 의해 정지된 계정입니다. 고객센터에 문의하세요.");
   }
   
-  // 세션 저장
   localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   return user;
 }
@@ -129,15 +145,13 @@ export function findUserPassword(username, name, phone) {
     throw new Error("일치하는 회원 정보가 없습니다.");
   }
   
-  // 임시비밀번호 규칙: 휴대전화 번호 뒤 4자리 + 생년월일 6자리 조합으로 구성 (예: '5678900101!')
   const user = users[userIdx];
   const rawPhone = user.phone.replace(/[^0-9]/g, "");
   const lastFourPhone = rawPhone.slice(-4);
-  const cleanBirth = user.birthdate.replace(/[^0-9]/g, "").slice(-6); // YYMMDD
+  const cleanBirth = user.birthdate.replace(/[^0-9]/g, "").slice(-6);
   
   const tempPassword = `${lastFourPhone}${cleanBirth}!`;
   
-  // 임시 비밀번호로 교체 및 강제변경 플래그 TRUE 설정
   users[userIdx].password = tempPassword;
   users[userIdx].needPasswordChange = true;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -156,10 +170,9 @@ export function changeUserPassword(username, newPassword) {
   }
   
   users[userIdx].password = newPassword;
-  users[userIdx].needPasswordChange = false; // 변경 완료 시 해제
+  users[userIdx].needPasswordChange = false;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
   
-  // 현재 세션 정보도 업데이트
   const currentSession = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
   if (currentSession.username === username) {
     currentSession.password = newPassword;
@@ -182,19 +195,26 @@ export function getTruckInfo(username) {
   return trucks.find(t => t.ownerUsername === username) || null;
 }
 
-// 9. 내 트럭 정보 업데이트
+// 9. 내 트럭 정보 업데이트 (서버 API 동기 전송 추가)
 export function updateTruckInfo(username, updatedTruck) {
   initDb();
   const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
   const idx = trucks.findIndex(t => t.ownerUsername === username);
   
+  let newTrucks = [...trucks];
   if (idx !== -1) {
-    trucks[idx] = { ...trucks[idx], ...updatedTruck };
-    localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
-    
-    // 일반 소비자용 모의 데이터(MOCK_TRUCKS)와 동기화를 위해, MOCK_TRUCKS에 세션 유저의 트럭이 있다면 변경해 줍니다.
-    // MVP 상에서 일반 화면 지도 마커 연동을 위해 임시 저장
+    newTrucks[idx] = { ...newTrucks[idx], ...updatedTruck };
+  } else {
+    newTrucks.push({ ...updatedTruck, ownerUsername: username });
   }
+  localStorage.setItem(TRUCKS_KEY, JSON.stringify(newTrucks));
+  
+  // 📡 백그라운드로 서버와 동기화
+  fetch('/api/trucks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...updatedTruck, ownerUsername: username })
+  }).catch(err => console.error("서버에 트럭 정보 동기화 실패:", err));
 }
 
 // 10. 회원 탈퇴 (Hard Delete)
@@ -207,6 +227,16 @@ export function deleteUserAccount(username) {
   const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
   const updatedTrucks = trucks.filter(t => t.ownerUsername !== username);
   localStorage.setItem(TRUCKS_KEY, JSON.stringify(updatedTrucks));
+  
+  // 📡 서버에서도 해당 유저의 트럭 비활성화(inactive) 처리
+  const targetTruck = trucks.find(t => t.ownerUsername === username);
+  if (targetTruck) {
+    fetch('/api/trucks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...targetTruck, status: 'inactive', ownerUsername: username })
+    }).catch(err => console.error("서버 탈퇴 트럭 상태 변경 실패:", err));
+  }
   
   localStorage.removeItem(SESSION_KEY);
 }

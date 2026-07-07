@@ -302,6 +302,80 @@ function OwnerMapContent() {
   const [weatherData, setWeatherData] = useState(null); // 내 위치 주변 날씨
   const [selectedSpotWeather, setSelectedSpotWeather] = useState(null); // 선택한 장소(스팟/행사) 날씨
 
+  // 👥 예약 및 리뷰 모니터링 관리 State
+  const [reservationsList, setReservationsList] = useState([]);
+  const [reviewsList, setReviewsList] = useState([]);
+
+  // 📡 예약 목록 수신
+  const fetchReservations = async () => {
+    try {
+      const res = await fetch('/api/reservations');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setReservationsList(json.data);
+        }
+      }
+    } catch (err) {
+      console.error("예약 수신 에러:", err);
+    }
+  };
+
+  // 📡 리뷰 목록 수신
+  const fetchReviews = async () => {
+    try {
+      const res = await fetch('/api/reviews');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setReviewsList(json.data);
+        }
+      }
+    } catch (err) {
+      console.error("리뷰 수신 에러:", err);
+    }
+  };
+
+  // 📅 예약 승인/거절/삭제 처리 핸들러
+  const handleReservationStatus = async (id, action) => {
+    if (action === 'delete' && !confirm("정말 이 예약을 삭제하시겠습니까?")) return;
+    try {
+      const res = await fetch('/api/reservations/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action })
+      });
+      if (res.ok) {
+        alert(`예약이 성공적으로 ${action === 'approve' ? '승인' : action === 'reject' ? '거절' : '삭제'}되었습니다.`);
+        fetchReservations();
+      }
+    } catch (err) {
+      alert("예약 조치 중 실패했습니다: " + err.message);
+    }
+  };
+
+  // 🗑️ 리뷰 삭제 처리 핸들러
+  const handleReviewDelete = async (id) => {
+    if (!confirm("정말 이 방명록을 삭제하시겠습니까? (삭제된 글은 복구할 수 없습니다)")) return;
+    try {
+      const res = await fetch(`/api/reviews/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        alert("방명록 글이 정상적으로 삭제되었습니다.");
+        fetchReviews();
+      }
+    } catch (err) {
+      alert("방명록 삭제 중 실패했습니다: " + err.message);
+    }
+  };
+
+  // 최초 로드 시 호출
+  useEffect(() => {
+    fetchReservations();
+    fetchReviews();
+  }, []);
+
   // 🌤️ 내 위치 날씨 연동 훅
   useEffect(() => {
     const fetchMyLocationWeather = async () => {
@@ -1011,8 +1085,42 @@ function OwnerMapContent() {
     alert(`📍 [${spot.name}] 위치로 영업이 즉시 개시되었습니다!`);
   };
 
+  // 📦 실시간 간편 재고 조정 핸들러
+  const handleUpdateStock = (amount) => {
+    if (!truck) return;
+    const newStock = Math.max(0, (parseInt(truck.stock) || 0) + amount);
+    const updated = { ...truck, stock: newStock };
+    updateTruckInfo(session.username, updated);
+    setTruck(updated);
+  };
+
+  const handleInputStockChange = (val) => {
+    if (!truck) return;
+    const newStock = Math.max(0, parseInt(val) || 0);
+    const updated = { ...truck, stock: newStock };
+    updateTruckInfo(session.username, updated);
+    setTruck(updated);
+  };
+
+  // 👥 실시간 간편 대기 팀 조정 핸들러
+  const handleUpdateWaitingTeams = (amount) => {
+    if (!truck) return;
+    const newWaiting = Math.max(0, (parseInt(truck.waitingTeams) || 0) + amount);
+    const updated = { ...truck, waitingTeams: newWaiting };
+    updateTruckInfo(session.username, updated);
+    setTruck(updated);
+  };
+
+  const handleInputWaitingChange = (val) => {
+    if (!truck) return;
+    const newWaiting = Math.max(0, parseInt(val) || 0);
+    const updated = { ...truck, waitingTeams: newWaiting };
+    updateTruckInfo(session.username, updated);
+    setTruck(updated);
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', width: '100vw', backgroundColor: 'var(--background)', paddingBottom: isMobile ? '64px' : '0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100vw', backgroundColor: 'var(--background)', paddingBottom: isMobile ? '64px' : '0', overflowY: 'auto' }}>
       
       {/* 네이버 지도 API SDK 동적 로드 */}
       {apiKey && !isMapError && (
@@ -1128,7 +1236,7 @@ function OwnerMapContent() {
       </div>
 
       {/* 지도 및 컨트롤 영역 */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ position: 'relative', height: isMobile ? '50vh' : '65vh', minHeight: '450px', borderBottom: '1px solid var(--border)' }}>
         
         {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
         <div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
@@ -1364,7 +1472,231 @@ function OwnerMapContent() {
           </div>
         )}
 
+        {/* 📦 실시간 재고 & 대기 팀 간편 제어 위젯 (영업 중일 때만 지도 상에 상시 표출) */}
+        {truck && truck.status === 'active' && (
+          <div className="glass-panel" style={{
+            position: 'absolute',
+            bottom: isMobile ? '86px' : '24px',
+            left: '24px',
+            zIndex: 99,
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: 'var(--shadow-lg)',
+            width: isMobile ? 'calc(100vw - 48px)' : '280px',
+            background: 'rgba(255, 255, 255, 0.95)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px'
+          }}>
+            <h4 style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '6px', margin: 0 }}>
+              ⚡ 실시간 현황 간편 제어
+            </h4>
+            
+            {/* 재고 제어 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-secondary)' }}>실시간 재고</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => handleUpdateStock(-5)}
+                  style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.72rem' }}
+                >-5</button>
+                <button
+                  onClick={() => handleUpdateStock(-1)}
+                  style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.8rem' }}
+                >-</button>
+                <input
+                  type="number"
+                  value={truck.stock || 0}
+                  onChange={(e) => handleInputStockChange(e.target.value)}
+                  style={{ width: '45px', textAlign: 'center', border: '1px solid var(--border)', borderRadius: '6px', padding: '3px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}
+                />
+                <button
+                  onClick={() => handleUpdateStock(1)}
+                  style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.8rem' }}
+                >+</button>
+                <button
+                  onClick={() => handleUpdateStock(5)}
+                  style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.72rem' }}
+                >+5</button>
+              </div>
+            </div>
+            
+            {/* 대기 제어 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-secondary)' }}>대기 팀수</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => handleUpdateWaitingTeams(-1)}
+                  style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.8rem' }}
+                >-</button>
+                <input
+                  type="number"
+                  value={truck.waitingTeams || 0}
+                  onChange={(e) => handleInputWaitingChange(e.target.value)}
+                  style={{ width: '45px', textAlign: 'center', border: '1px solid var(--border)', borderRadius: '6px', padding: '3px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}
+                />
+                <button
+                  onClick={() => handleUpdateWaitingTeams(1)}
+                  style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#F1F2F6', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '0.8rem' }}
+                >+</button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
+
+      {/* 🛠️ 사장님 전용 예약 및 방명록 관리 대시보드 */}
+      <section style={{ padding: '60px 24px', maxWidth: '1200px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '40px' }}>
+        
+        {/* 1. 출장 케이터링 예약 신청 관리 */}
+        <div className="glass-panel" style={{ padding: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>
+              📅 출장 케이터링 예약 신청 관리 ({reservationsList.length})
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>실시간 업데이트 완료</span>
+          </div>
+          
+          <div style={{ overflowX: 'auto' }}>
+            {reservationsList.length === 0 ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0', fontSize: '0.9rem' }}>아직 접수된 출장 케이터링 신청 내역이 없습니다.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
+                    <th style={{ padding: '12px 8px' }}>신청자 / 단체</th>
+                    <th style={{ padding: '12px 8px' }}>연락처</th>
+                    <th style={{ padding: '12px 8px' }}>희망일자</th>
+                    <th style={{ padding: '12px 8px' }}>인원</th>
+                    <th style={{ padding: '12px 8px' }}>행사 장소</th>
+                    <th style={{ padding: '12px 8px' }}>상세 요약</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'center' }}>상태</th>
+                    <th style={{ padding: '12px 8px', textAlign: 'center' }}>관리 조치</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservationsList.map((res) => (
+                    <tr key={res.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} className="table-row-hover">
+                      <td style={{ padding: '14px 8px', fontWeight: '700' }}>{res.name}</td>
+                      <td style={{ padding: '14px 8px' }}>{res.phone}</td>
+                      <td style={{ padding: '14px 8px', color: 'var(--primary)', fontWeight: '600' }}>{res.date} ({res.time})</td>
+                      <td style={{ padding: '14px 8px' }}>{res.scale}</td>
+                      <td style={{ padding: '14px 8px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={res.address}>{res.address}</td>
+                      <td style={{ padding: '14px 8px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={res.menu}>{res.menu}</td>
+                      <td style={{ padding: '14px 8px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '8px',
+                          fontSize: '0.72rem',
+                          fontWeight: '700',
+                          color: '#FFFFFF',
+                          backgroundColor:
+                            res.status === 'approved' ? 'var(--success)' :
+                            res.status === 'rejected' ? 'var(--danger)' : 'var(--warning)'
+                        }}>
+                          {res.status === 'approved' ? '승인완료' :
+                           res.status === 'rejected' ? '거절됨' : '대기중'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 8px', textAlign: 'center' }}>
+                        {res.status === 'pending' ? (
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            <button
+                              onClick={() => handleReservationStatus(res.id, 'approve')}
+                              style={{ padding: '4px 10px', background: 'var(--success)', color: '#FFF', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}
+                            >
+                              승인
+                            </button>
+                            <button
+                              onClick={() => handleReservationStatus(res.id, 'reject')}
+                              style={{ padding: '4px 10px', background: 'var(--danger)', color: '#FFF', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}
+                            >
+                              거절
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleReservationStatus(res.id, 'delete')}
+                            style={{ padding: '4px 10px', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* 2. 칭찬 방명록 모니터링 및 삭제 권한 */}
+        <div className="glass-panel" style={{ padding: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>
+              💬 소비자 방명록 모니터링 ({reviewsList.length})
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: '600' }}>※ 악성 스팸 방명록은 강제 삭제 가능합니다.</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', maxHeight: '420px', overflowY: 'auto', paddingRight: '8px' }}>
+            {reviewsList.length === 0 ? (
+              <p style={{ gridColumn: 'span 2', textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0', fontSize: '0.9rem' }}>아직 등록된 소비자 방명록 피드가 없습니다.</p>
+            ) : (
+              reviewsList.map((rev) => (
+                <div
+                  key={rev.id}
+                  style={{
+                    background: 'var(--surface-light)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    position: 'relative'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--text-primary)' }}>{rev.name}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{rev.date}</span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleReviewDelete(rev.id)}
+                      style={{
+                        padding: '2px 8px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: 'var(--danger)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🗑️ 삭제
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '2px', color: '#FFC048', fontSize: '0.8rem' }}>
+                    {'⭐'.repeat(rev.stars)}
+                  </div>
+                  
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: 0 }}>
+                    {rev.comment}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+      </section>
 
       {/* 공통 팝업 모달 */}
       <Modal

@@ -221,6 +221,14 @@ let pool = null;
 function getDbPool() {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) return null;
+  
+  // 💡 가짜 DB 주소 플레이스홀더가 기입된 경우, 진짜 연동을 시도하지 않고 모의(Mock) 모드로 작동하도록 차단
+  if (
+    dbUrl.includes("your-neon-hostname") || 
+    dbUrl.includes("username:password")
+  ) {
+    return null;
+  }
 
   if (!pool) {
     console.log("🔌 [Neon DB] 최초 연결 풀을 설정합니다.");
@@ -237,8 +245,10 @@ function getDbPool() {
   return pool;
 }
 
-export async function GET() {
+export async function GET(request) {
   // 공공데이터포털 서비스키 및 Neon DB URL 취득
+  const { searchParams } = new URL(request.url || '');
+  const forceSync = searchParams.get('force') === 'true';
   const serviceKey = process.env.KOREA_WEATHER_API_KEY;
   const dbPool = getDbPool();
 
@@ -262,18 +272,22 @@ export async function GET() {
         lat DOUBLE PRECISION NOT NULL,
         lng DOUBLE PRECISION NOT NULL,
         rules TEXT,
+        approved BOOLEAN DEFAULT TRUE,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
     await dbPool.query(createTableQuery);
+
+    // 하위 호환성 확보: 기존 테이블에 approved 컬럼이 없는 경우를 위한 조치
+    await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
 
     // 2. 현재 DB 내 저장 개수 및 마지막 자동 동기화 갱신 날짜 확인
     const countRes = await dbPool.query('SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM legal_spots');
     const dbCount = parseInt(countRes.rows[0].count);
     const lastUpdate = countRes.rows[0].last_update ? new Date(countRes.rows[0].last_update) : null;
 
-    // 🕒 동기화 주기: 데이터가 없거나 24시간이 경과한 경우 자가 동기화 실행
-    const needsSync = dbCount === 0 || !lastUpdate || (Date.now() - lastUpdate.getTime() > 24 * 60 * 60 * 1000);
+    // 🕒 동기화 주기: 데이터가 없거나 24시간이 경과한 경우 자가 동기화 실행 (forceSync 파라미터 유무 체크)
+    const needsSync = forceSync || dbCount === 0 || !lastUpdate || (Date.now() - lastUpdate.getTime() > 24 * 60 * 60 * 1000);
 
     if (needsSync && serviceKey) {
       console.log("📡 [API Route] 24시간 주기 갱신 도달! 공공 OpenAPI에서 실시간 데이터를 동기화합니다...");
@@ -336,8 +350,31 @@ export async function GET() {
       }
     }
 
-    // 3. Neon DB에 저장되어 있는 모든 정제 데이터 긁어오기
-    const dbSpots = await dbPool.query('SELECT id, name, lat, lng, rules FROM legal_spots ORDER BY id ASC');
+    // 💡 만약 DB가 여전히 텅 비어있다면, 사용자 경험을 위해 백업 30대 명당 데이터를 DB에 강제 시딩(Seeding)합니다.
+    const reCountRes = await dbPool.query('SELECT COUNT(*) as count FROM legal_spots');
+    const finalDbCount = parseInt(reCountRes.rows[0].count || '0');
+    if (finalDbCount === 0) {
+      console.log("ℹ️ [API Route] Neon DB가 비어있습니다. 백업 30대 명당 데이터를 DB에 자동 시딩합니다...");
+      await dbPool.query('BEGIN');
+      try {
+        for (let i = 0; i < FALLBACK_LEGAL_SPOTS.length; i++) {
+          const spot = FALLBACK_LEGAL_SPOTS[i];
+          await dbPool.query(`
+            INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (id) DO NOTHING
+          `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true]);
+        }
+        await dbPool.query('COMMIT');
+        console.log("✅ [API Route] Neon DB 백업 30대 명당 시딩 완결!");
+      } catch (seedErr) {
+        await dbPool.query('ROLLBACK');
+        console.error("❌ [API Route] Neon DB 시딩 중 오류 발생:", seedErr.message);
+      }
+    }
+
+    // 3. Neon DB에 저장되어 있는 모든 정제 데이터 긁어오기 (승인된 스팟만)
+    const dbSpots = await dbPool.query('SELECT id, name, lat, lng, rules FROM legal_spots WHERE approved = TRUE ORDER BY id ASC');
     
     // 만약 동기화 실패 등의 연유로 DB가 아직 비어있다면, Fallback을 임시 공급
     if (dbSpots.rows.length === 0) {

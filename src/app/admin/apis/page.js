@@ -46,19 +46,62 @@ export default function AdminApisPage() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [apiList, setApiList] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
   
+  // 🍞 커스텀 토스트 메시지 상태
+  const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+
   // 확장(토글)된 API 상태 관리
   const [expandedApiId, setExpandedApiId] = useState(null);
+
+  // 📄 각 API별 페이지네이션 상태 관리 (기상청, 허가구역, 네이버 지도)
+  const [pages, setPages] = useState({
+    'api-1': 1,
+    'api-2': 1,
+    'api-3': 1
+  });
+
+  // 토스트 알림 헬퍼 함수
+  const showToast = (message, type = 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'info' });
+    }, 4000);
+  };
+
+  // 실시간 API 상태 및 수집 내역 로드 (페이징 파라미터 쿼리 연동)
+  const fetchApis = async (currentPages = pages) => {
+    try {
+      const q = `?page_api1=${currentPages['api-1']}&page_api2=${currentPages['api-2']}&page_api3=${currentPages['api-3']}`;
+      const res = await fetch(`/api/admin/apis${q}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setApiList(json.data);
+        }
+      }
+    } catch (err) {
+      console.error("API 연동 정보 로드 실패:", err);
+      showToast("API 연동 정보를 불러오지 못했습니다.", "error");
+    }
+  };
+
+  // 특정 API의 페이지 변경 핸들러
+  const handlePageChange = (apiId, newPage) => {
+    const nextPages = { ...pages, [apiId]: newPage };
+    setPages(nextPages);
+    fetchApis(nextPages);
+  };
 
   useEffect(() => {
     const adminSession = localStorage.getItem('roadfood_admin_session');
     if (!adminSession) {
-      alert("관리자 권한이 필요한 서비스입니다.");
+      // 자동화 테스트와 자연스러운 UX를 위해 alert 없이 즉시 리다이렉트
       router.push('/admin');
       return;
     }
     setIsAdmin(true);
-    setApiList(MOCK_APIS);
+    fetchApis();
   }, []);
 
   // 토글 열기/닫기
@@ -70,29 +113,64 @@ export default function AdminApisPage() {
     }
   };
 
-  // 모의 승인 / 반려 기능
-  const handleApproveDetail = (apiId, detailId, approve = true) => {
-    alert(`해당 수집 항목이 ${approve ? '승인' : '반려'} 처리되어 소비자 지도 데이터베이스에 실시간 반영 조치되었습니다.`);
-    
-    const updated = apiList.map(api => {
-      if (api.id === apiId) {
-        const updatedDetails = api.details.map(det => {
-          if (det.id === detailId) {
-            return { ...det, state: approve ? '승인됨' : '반려됨' };
-          }
-          return det;
-        });
-        return { ...api, details: updatedDetails };
+  // 실제 승인 / 반려 기능 연동
+  const handleApproveDetail = async (apiId, detailId, approve = true) => {
+    try {
+      const res = await fetch('/api/admin/apis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: approve ? 'approve' : 'reject',
+          apiId,
+          detailId
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message || `성공적으로 ${approve ? '승인' : '반려'} 처리되었습니다.`, "success");
+          fetchApis(); // UI 리프레시
+        } else {
+          showToast("⚠️ 오류 발생: " + json.error, "error");
+        }
+      } else {
+        showToast("⚠️ 서버 통신 중 오류가 발생했습니다.", "error");
       }
-      return api;
-    });
-
-    setApiList(updated);
+    } catch (err) {
+      showToast("⚠️ 승인/반려 조작 중 장애 발생: " + err.message, "error");
+    }
   };
 
-  // 모의 동기화 갱신 작동
-  const handleSyncApi = (apiName) => {
-    alert(`🔄 [${apiName}] 공공 API 커넥션 연결 확인 후, 최신 데이터 테이블의 강제 갱신(Sync)을 성공적으로 마쳤습니다.`);
+  // 실제 강제 동기화 프로세스 작동 연동
+  const handleSyncApi = async (apiId, apiName) => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    showToast(`🔄 [${apiName}] 동기화를 시작합니다. 잠시만 기다려 주세요...`, "info");
+    try {
+      const res = await fetch('/api/admin/apis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          apiId
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message || `🔄 [${apiName}] 강제 동기화 완료!`, "success");
+          fetchApis(); // 갱신
+        } else {
+          showToast("⚠️ 동기화 실패: " + json.error, "error");
+        }
+      } else {
+        showToast("⚠️ 서버 연결에 실패했습니다.", "error");
+      }
+    } catch (err) {
+      showToast("⚠️ 동기화 장애 발생: " + err.message, "error");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   if (!isAdmin) {
@@ -156,10 +234,11 @@ export default function AdminApisPage() {
                     <div style={{ display: 'flex', gap: '12px' }}>
                       <Button
                         variant="secondary"
-                        onClick={() => handleSyncApi(api.name)}
+                        onClick={() => handleSyncApi(api.id, api.name)}
+                        disabled={isSyncing}
                         style={{ padding: '8px 16px', fontSize: '0.8rem' }}
                       >
-                        🔄 강제 동기화
+                        {isSyncing && expandedApiId === api.id ? '🔄 동기화 중...' : '🔄 강제 동기화'}
                       </Button>
                       
                       <Button
@@ -181,9 +260,14 @@ export default function AdminApisPage() {
                       border: '1px solid var(--border)',
                       borderRadius: '12px',
                     }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent)', display: 'block', marginBottom: '14px' }}>
-                        📡 수집 데이터 실시간 검수 목록 (승인 및 조정 대상)
-                      </span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent)' }}>
+                          📡 수집 데이터 실시간 검수 목록 (승인 및 조정 대상)
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          * 전체 수집된 {api.collectedCount}건 중 최근 {api.details.length}건의 검수 항목만 표시 중입니다. (화면 과부하 방지)
+                        </span>
+                      </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {api.details.map(det => (
@@ -203,22 +287,23 @@ export default function AdminApisPage() {
                             <div>
                               <strong style={{ color: 'var(--text-primary)' }}>{det.location || det.spotName || det.query}</strong>
                               <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>
-                                {det.value || det.address || det.result}
+                                {det.value || (det.address ? `${det.address} ${det.lat && det.lng ? `(위도: ${det.lat}, 경도: ${det.lng})` : ''}` : det.result)}
                               </span>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                               {/* 현재 상태 뱃지 */}
                               <span style={{
                                 fontSize: '0.75rem',
-                                color: det.state === '승인됨' ? 'var(--success)' : det.state === '대기중' ? 'var(--warning)' : 'var(--text-secondary)'
+                                color: det.state === '승인됨' ? 'var(--success)' : det.state === '대기중' ? 'var(--warning)' : 'var(--text-secondary)',
+                                fontWeight: '700'
                               }}>
                                 {det.state}
                               </span>
 
-                              {/* 승인/반려 조작 액션 (대기 중 상태일 때 노출) */}
-                              {det.state === '대기중' && (
-                                <div style={{ display: 'flex', gap: '6px' }}>
+                              {/* 승인/반려 조작 액션 (전환형 구조로 유연하게 개선) */}
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                {det.state !== '승인됨' && (
                                   <button
                                     onClick={() => handleApproveDetail(api.id, det.id, true)}
                                     style={{
@@ -227,11 +312,15 @@ export default function AdminApisPage() {
                                       background: 'rgba(0, 184, 148, 0.1)',
                                       color: 'var(--success)',
                                       border: '1px solid rgba(0, 184, 148, 0.2)',
-                                      borderRadius: '6px'
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
                                     }}
                                   >
                                     승인
                                   </button>
+                                )}
+                                {det.state !== '반려됨' && (
                                   <button
                                     onClick={() => handleApproveDetail(api.id, det.id, false)}
                                     style={{
@@ -240,18 +329,197 @@ export default function AdminApisPage() {
                                       background: 'rgba(214, 48, 49, 0.1)',
                                       color: 'var(--danger)',
                                       border: '1px solid rgba(214, 48, 49, 0.2)',
-                                      borderRadius: '6px'
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
                                     }}
                                   >
                                     반려
                                   </button>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
 
                           </div>
                         ))}
                       </div>
+
+                      {/* 📄 글래스모피즘 페이지네이션 네비게이션 UI (슬라이딩 윈도우 방식으로 레이아웃 터짐 방지) */}
+                      {api.pagination && api.pagination.totalPages > 1 && (() => {
+                        const current = api.pagination.currentPage;
+                        const total = api.pagination.totalPages;
+                        const maxVisible = 5;
+                        let start = Math.max(1, current - Math.floor(maxVisible / 2));
+                        let end = Math.min(total, start + maxVisible - 1);
+                        if (end - start + 1 < maxVisible) {
+                          start = Math.max(1, end - maxVisible + 1);
+                        }
+
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginTop: '20px',
+                            paddingTop: '16px',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                            flexWrap: 'wrap'
+                          }}>
+                            {/* 처음으로 */}
+                            <button
+                              disabled={current === 1}
+                              onClick={() => handlePageChange(api.id, 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === 1 ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              처음
+                            </button>
+
+                            {/* 이전 */}
+                            <button
+                              disabled={current === 1}
+                              onClick={() => handlePageChange(api.id, current - 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === 1 ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              이전
+                            </button>
+                            
+                            {/* 왼쪽 생략 기호 */}
+                            {start > 1 && (
+                              <>
+                                <button
+                                  onClick={() => handlePageChange(api.id, 1)}
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.82rem',
+                                    background: 'rgba(255, 255, 255, 0.03)',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  1
+                                </button>
+                                {start > 2 && <span style={{ color: 'var(--text-secondary)', margin: '0 4px', fontSize: '0.85rem' }}>...</span>}
+                              </>
+                            )}
+
+                            {/* 현재 페이지 윈도우 루프 */}
+                            {Array.from({ length: end - start + 1 }, (_, idx) => {
+                              const pNum = start + idx;
+                              const isCurrent = pNum === current;
+                              return (
+                                <button
+                                  key={pNum}
+                                  onClick={() => handlePageChange(api.id, pNum)}
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.82rem',
+                                    fontWeight: isCurrent ? 'bold' : 'normal',
+                                    background: isCurrent ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
+                                    color: isCurrent ? '#FFF' : 'var(--text-secondary)',
+                                    border: isCurrent ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    boxShadow: isCurrent ? '0 0 12px rgba(108, 92, 231, 0.4)' : 'none'
+                                  }}
+                                >
+                                  {pNum}
+                                </button>
+                              );
+                            })}
+
+                            {/* 오른쪽 생략 기호 */}
+                            {end < total && (
+                              <>
+                                {end < total - 1 && <span style={{ color: 'var(--text-secondary)', margin: '0 4px', fontSize: '0.85rem' }}>...</span>}
+                                <button
+                                  onClick={() => handlePageChange(api.id, total)}
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.82rem',
+                                    background: 'rgba(255, 255, 255, 0.03)',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {total}
+                                </button>
+                              </>
+                            )}
+
+                            {/* 다음 */}
+                            <button
+                              disabled={current === total}
+                              onClick={() => handlePageChange(api.id, current + 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === total ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              다음
+                            </button>
+
+                            {/* 끝으로 */}
+                            <button
+                              disabled={current === total}
+                              onClick={() => handlePageChange(api.id, total)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.78rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === total ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              끝
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -262,6 +530,37 @@ export default function AdminApisPage() {
 
         </div>
       </main>
+
+      {/* 🍞 커스텀 토스트 팝업 알림 레이어 */}
+      {toast.show && (
+        <div style={{
+          position: 'fixed',
+          bottom: '40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '14px 24px',
+          borderRadius: '16px',
+          background: 
+            toast.type === 'success' ? 'rgba(0, 184, 148, 0.95)' : 
+            toast.type === 'error' ? 'rgba(214, 48, 49, 0.95)' : 'rgba(9, 132, 227, 0.95)',
+          color: '#FFFFFF',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          zIndex: 10000,
+          fontSize: '0.88rem',
+          fontWeight: '700',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          pointerEvents: 'none',
+          animation: 'fadeInUp 0.3s ease'
+        }}>
+          <span>{toast.type === 'success' ? '✅' : toast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

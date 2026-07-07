@@ -109,7 +109,7 @@ export default function RegisterPage() {
   };
 
   // 2단계 제출 (최종 회원가입 등록)
-  const handleStep2Submit = (e) => {
+  const handleStep2Submit = async (e) => {
     e.preventDefault();
     setNameError('');
     setPhoneError('');
@@ -148,7 +148,7 @@ export default function RegisterPage() {
         birthdate,
         email,
       };
-      registerUser(newUser);
+      await registerUser(newUser);
       setStep(3); // 가입 완료 단계로 이동
     } catch (err) {
       alert(err.message);
