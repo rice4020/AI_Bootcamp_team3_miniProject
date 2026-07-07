@@ -48,6 +48,9 @@ export default function AdminApisPage() {
   const [apiList, setApiList] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   
+  // 📊 푸드트럭 허가구역 실시간 통계 상태 추가
+  const [stats, setStats] = useState({ total: 0, approved: 0, rejected: 0, pending: 0 });
+  
   // 🍞 커스텀 토스트 메시지 상태
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
 
@@ -78,6 +81,9 @@ export default function AdminApisPage() {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
           setApiList(json.data);
+          if (json.stats) {
+            setStats(json.stats); // 📊 실시간 통계 업데이트
+          }
         }
       }
     } catch (err) {
@@ -199,6 +205,34 @@ export default function AdminApisPage() {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               기상청, 점용공간허가, 네이버 지도 API 커넥터들의 트래픽 및 수집 내역을 수동 검수/조정하거나 승인 및 즉시 갱신합니다.
             </p>
+          </div>
+
+          {/* 📊 푸드트럭 허가구역 승인 현황 실시간 통계 대시보드 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '16px',
+            width: '100%'
+          }}>
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--text-primary)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>전체 수집 구역</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: '800' }}>{stats.total} <span style={{ fontSize: '1rem', fontWeight: '500' }}>곳</span></div>
+            </div>
+            
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--success)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🟢 영업 승인 구역</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--success)' }}>{stats.approved} <span style={{ fontSize: '1rem', fontWeight: '500' }}>곳</span></div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--error)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🔴 검수 반려 구역</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--error)' }}>{stats.rejected} <span style={{ fontSize: '1rem', fontWeight: '500' }}>곳</span></div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--warning)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🟡 신규 검수 대기</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--warning)' }}>{stats.pending} <span style={{ fontSize: '1rem', fontWeight: '500' }}>곳</span></div>
+            </div>
           </div>
 
           {/* API 리스트 및 검수/조정 토글 패널 */}

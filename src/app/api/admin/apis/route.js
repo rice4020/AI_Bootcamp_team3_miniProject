@@ -1,6 +1,38 @@
 import { NextResponse } from 'next/server';
 import { sql, IS_MOCK_MODE } from '@/lib/db';
 import { Pool } from 'pg';
+import fs from 'fs';
+import path from 'path';
+
+// 🕒 동기화 상태 파일 연동을 위한 영구 경로 및 헬퍼 정의
+const STATUS_FILE_PATH = path.join(process.cwd(), 'data', 'sync_status.json');
+
+function readSyncStatus() {
+  try {
+    if (fs.existsSync(STATUS_FILE_PATH)) {
+      const content = fs.readFileSync(STATUS_FILE_PATH, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("동기화 상태 파일 읽기 실패:", err.message);
+  }
+  return {
+    "api-1": { lastUpdated: "2026-07-07 07:30", collectedCount: 72 },
+    "api-3": { lastUpdated: "2026-07-07 07:30", collectedCount: 3420 }
+  };
+}
+
+function writeSyncStatus(status) {
+  try {
+    const dir = path.dirname(STATUS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(STATUS_FILE_PATH, JSON.stringify(status, null, 2), 'utf-8');
+  } catch (err) {
+    console.error("동기화 상태 파일 쓰기 실패:", err.message);
+  }
+}
 
 // pg pool (허가구역 동기화 UPSERT용)
 let pool = null;
@@ -28,13 +60,37 @@ function getDbPool() {
   return pool;
 }
 
-// 🕒 24시간제(YYYY-MM-DD HH:mm) 시간 포맷터 헬퍼 함수 (오후 6시 -> 18:00 형식 적용)
+// 🕒 한국 표준시(KST, UTC+9) 보정 날짜 생성 헬퍼 함수
+function getKstDate() {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+  return new Date(utc + (9 * 60 * 60 * 1000)); // UTC+9 보정
+}
+
+// 🕒 24시간제(YYYY-MM-DD HH:mm) 시간 포맷터 헬퍼 함수 (아시아/서울 타임존 고정 적용)
 function format24hDate(date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const min = String(date.getMinutes()).padStart(2, '0');
+  if (!date) return '';
+  const options = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Seoul'
+  };
+  const formatter = new Intl.DateTimeFormat('ko-KR', options);
+  const parts = formatter.formatToParts(date);
+  
+  let yyyy = '', mm = '', dd = '', hh = '', min = '';
+  parts.forEach(part => {
+    if (part.type === 'year') yyyy = part.value;
+    if (part.type === 'month') mm = part.value;
+    if (part.type === 'day') dd = part.value;
+    if (part.type === 'hour') hh = part.value;
+    if (part.type === 'minute') min = part.value;
+  });
+  
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
@@ -200,7 +256,14 @@ async function fetchRealWeatherFromKMA(serviceKey, nx, ny) {
     const res = await fetch(targetUrl, { next: { revalidate: 0 } });
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const resText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(resText);
+    } catch (parseErr) {
+      console.warn("기상청 API 응답 JSON 파싱 실패(XML 우회):", resText.slice(0, 100));
+      return null;
+    }
     const items = data?.response?.body?.items?.item;
     if (!items || !Array.isArray(items)) return null;
 
@@ -274,18 +337,30 @@ export async function GET(request) {
       }
     }
 
+    const limit = 10;
+
+    // 🕒 0. 로컬 파일 저장소에서 기상청 및 네이버 동기화 상태 로드
+    const syncStatus = readSyncStatus();
+    const weatherLastUpdated = syncStatus["api-1"]?.lastUpdated || "2026-07-07 07:30";
+    const api1Total = syncStatus["api-1"]?.collectedCount || 72;
+    const api1TotalPages = Math.ceil(api1Total / limit);
+
+    const naverLastUpdated = syncStatus["api-3"]?.lastUpdated || "2026-07-07 07:30";
+    const api3Total = syncStatus["api-3"]?.collectedCount || 3420;
+    const api3TotalPages = Math.ceil(api3Total / limit);
+
+    // 📊 푸드트럭 승인 현황 통계 수치 초기화
+    let stats = { total: 0, approved: 0, rejected: 0, pending: 0 };
+
     // 각 API별 요청 페이지 파싱 (기본값: 1페이지, 한 페이지당 10개 고정)
     const pageApi1 = parseInt(searchParams.get('page_api1') || '1') || 1;
     const pageApi2 = parseInt(searchParams.get('page_api2') || '1') || 1;
     const pageApi3 = parseInt(searchParams.get('page_api3') || '1') || 1;
-    const limit = 10;
 
     // 1. 기상청 API 상태 및 데이터 매핑 (실시간 연결 상태 동적 확인)
     const weatherStatus = await checkApiConnection('weather');
     
     // 기상청 수집 이력 목록 동적 생성 (12개 격자 * 6개 시간대 = 72건 매칭)
-    const api1Total = 72;
-    const api1TotalPages = Math.ceil(api1Total / limit);
     let allWeatherData = [];
     for (let i = 0; i < api1Total; i++) {
       const locIdx = i % mockWeatherDetails.length;
@@ -315,12 +390,24 @@ export async function GET(request) {
 
     if (hasDb) {
       try {
-        const countRes = await dbPool.query('SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM legal_spots');
+        const countRes = await dbPool.query(`
+          SELECT 
+            COUNT(*) as count, 
+            MAX(updated_at) as last_update,
+            COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
+            COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
+            COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
+          FROM legal_spots
+        `);
         spotsCount = parseInt(countRes.rows[0].count) || 0;
         if (countRes.rows[0].last_update) {
           const date = new Date(countRes.rows[0].last_update);
           spotsLastUpdated = format24hDate(date);
         }
+        stats.total = spotsCount;
+        stats.approved = parseInt(countRes.rows[0].approved_count) || 0;
+        stats.rejected = parseInt(countRes.rows[0].rejected_count) || 0;
+        stats.pending = parseInt(countRes.rows[0].pending_count) || 0;
 
         spotsTotalPages = Math.ceil(spotsCount / limit);
         const offset = (pageApi2 - 1) * limit;
@@ -389,14 +476,20 @@ export async function GET(request) {
       }
       spotsTotalPages = Math.ceil(allSpotsData.length / limit);
       spotsDetails = allSpotsData.slice((pageApi2 - 1) * limit, pageApi2 * limit);
+
+      // 📊 Mock 모드 실시간 승인 현황 통계 집계
+      stats.total = allSpotsData.length;
+      allSpotsData.forEach(item => {
+        if (item.state === '승인됨') stats.approved++;
+        else if (item.state === '반려됨') stats.rejected++;
+        else stats.pending++;
+      });
     }
 
     // 3. 네이버 지도 API 상태 (실시간 연결 상태 동적 확인)
     const naverStatus = await checkApiConnection('naver');
     
-    // 네이버 지오코딩 2500건에 매칭되도록 백엔드 동적 생성
-    const api3Total = mockNaverCount;
-    const api3TotalPages = Math.ceil(api3Total / limit);
+    // 네이버 지오코딩 데이터 매칭 (위에서 선언한 영구 상태 변수 재활용)
     let allNaverData = [];
     const queries = [
       "서울특별시 종로구 세종대로 172",
@@ -443,7 +536,7 @@ export async function GET(request) {
         id: 'api-1',
         name: "기상청 동네예보 API",
         status: weatherStatus,
-        lastUpdated: mockWeatherLastUpdated,
+        lastUpdated: weatherLastUpdated,
         collectedCount: api1Total,
         pagination: {
           currentPage: pageApi1,
@@ -471,7 +564,7 @@ export async function GET(request) {
         id: 'api-3',
         name: "네이버 지도 플랫폼 Geocoding API",
         status: naverStatus,
-        lastUpdated: mockNaverLastUpdated,
+        lastUpdated: naverLastUpdated,
         collectedCount: hasDb ? 3420 : mockNaverCount,
         pagination: {
           currentPage: pageApi3,
@@ -483,7 +576,7 @@ export async function GET(request) {
       }
     ];
 
-    return NextResponse.json({ success: true, data: apis });
+    return NextResponse.json({ success: true, data: apis, stats });
   } catch (error) {
     console.error("GET /api/admin/apis 에러:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -525,8 +618,18 @@ export async function POST(request) {
         const serviceKey = process.env.KOREA_WEATHER_API_KEY;
         const hasRealKey = serviceKey && serviceKey.trim() !== "your-public-data-api-service-key";
         
-        const now = new Date();
-        mockWeatherLastUpdated = format24hDate(now);
+        const now = getKstDate();
+        const updatedTime = format24hDate(now);
+        
+        // 🕒 기상청 동기화 상태 파일에 저장
+        const currentStatus = readSyncStatus();
+        currentStatus["api-1"] = {
+          lastUpdated: updatedTime,
+          collectedCount: (currentStatus["api-1"]?.collectedCount || 72) + 1
+        };
+        writeSyncStatus(currentStatus);
+        
+        mockWeatherLastUpdated = updatedTime;
 
         if (hasRealKey) {
           console.log("📡 [Weather Sync] 기상청 OpenAPI를 통해 주요 지역 실시간 날씨 정보를 수집합니다.");
@@ -570,7 +673,7 @@ export async function POST(request) {
       if (apiId === "api-2") {
         if (!hasDb) {
           mockSpotsCount += 5;
-          const date = new Date();
+          const date = getKstDate();
           mockSpotsLastUpdated = format24hDate(date);
           
           mockSpotsDetails = [
@@ -615,18 +718,18 @@ export async function POST(request) {
             for (const spot of FALLBACK_LEGAL_SPOTS) {
               await dbPool.query(`
                 INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT (id) DO UPDATE SET
                   name = EXCLUDED.name,
                   lat = EXCLUDED.lat,
                   lng = EXCLUDED.lng,
                   rules = EXCLUDED.rules,
-                  updated_at = NOW()
-              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true]);
+                  updated_at = EXCLUDED.updated_at
+              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, getKstDate()]);
             }
             await dbPool.query('COMMIT');
             
-            const date = new Date();
+            const date = getKstDate();
             mockSpotsLastUpdated = format24hDate(date);
             mockSpotsCount = FALLBACK_LEGAL_SPOTS.length;
 
@@ -663,19 +766,19 @@ export async function POST(request) {
 
                 await dbPool.query(`
                   INSERT INTO legal_spots (id, name, lat, lng, rules, updated_at)
-                  VALUES ($1, $2, $3, $4, $5, NOW())
+                  VALUES ($1, $2, $3, $4, $5, $6)
                   ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name,
                     lat = EXCLUDED.lat,
                     lng = EXCLUDED.lng,
                     rules = EXCLUDED.rules,
-                    updated_at = NOW()
-                `, [id, name, lat, lng, rulesText]);
+                    updated_at = EXCLUDED.updated_at
+                `, [id, name, lat, lng, rulesText, getKstDate()]);
               }
             }
             await dbPool.query('COMMIT');
             
-            const date = new Date();
+            const date = getKstDate();
             mockSpotsLastUpdated = format24hDate(date);
             mockSpotsCount = items.length; // 실제 카운트 갱신
 
@@ -695,9 +798,20 @@ export async function POST(request) {
 
       // 1.3 네이버 지도 API 강제 동기화 (시간 및 변환 데이터 갱신 시뮬레이션 적용)
       if (apiId === "api-3") {
-        const now = new Date();
-        mockNaverLastUpdated = format24hDate(now);
-        mockNaverCount += 1;
+        const now = getKstDate();
+        const updatedTime = format24hDate(now);
+        
+        // 🕒 네이버 지오코딩 동기화 상태 파일에 저장
+        const currentStatus = readSyncStatus();
+        const nextCount = (currentStatus["api-3"]?.collectedCount || 3420) + 1;
+        currentStatus["api-3"] = {
+          lastUpdated: updatedTime,
+          collectedCount: nextCount
+        };
+        writeSyncStatus(currentStatus);
+        
+        mockNaverLastUpdated = updatedTime;
+        mockNaverCount = nextCount;
         
         // 지오코딩 모의 수집 로그 추가 (역동적인 UI 리액션 체감)
         const mockQueries = [
@@ -782,8 +896,8 @@ export async function POST(request) {
       try {
         // Neon DB 상의 legal_spots 테이블에서 해당 스팟의 approved 컬럼을 업데이트
         const updateRes = await dbPool.query(
-          'UPDATE legal_spots SET approved = $1, updated_at = NOW() WHERE id = $2',
-          [isApprove, detailId]
+          'UPDATE legal_spots SET approved = $1, updated_at = $2 WHERE id = $3',
+          [isApprove, getKstDate(), detailId]
         );
 
         // 만약 푸드트럭 구역 데이터를 DB에서 찾을 수 없는 경우(즉, DB 연동 중이지만 메모리 상의 모의 푸드트럭인 경우)
