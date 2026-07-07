@@ -198,8 +198,8 @@ export default function LoginPage() {
             border: '1px solid var(--border)'
           }}>
             💡 <strong>테스트 가이드 계정</strong><br />
-            - 아이디: <code style={{ color: 'var(--primary)', fontWeight: 'bold' }}>owner123</code><br />
-            - 비밀번호: <code style={{ color: 'var(--primary)', fontWeight: 'bold' }}>password123!</code>
+            - 아이디: <code style={{ color: 'var(--primary)', fontWeight: 'bold' }}>truck1</code><br />
+            - 비밀번호: <code style={{ color: 'var(--primary)', fontWeight: 'bold' }}>truck123!</code>
           </div>
 
         </div>
