@@ -593,58 +593,99 @@ export async function POST(request) {
           }, { status: 400 });
         }
 
+        let items = null;
         try {
           const targetUrl = `https://api.data.go.kr/openapi/tn_pubr_public_food_truck_permit_area_api?serviceKey=${encodeURIComponent(serviceKey)}&type=json&pageNo=1&numOfRows=1000`;
           const apiResponse = await fetch(targetUrl, { next: { revalidate: 0 } });
 
-          if (!apiResponse.ok) {
-            throw new Error(`OpenAPI 통신 실패 (Status: ${apiResponse.status})`);
+          if (apiResponse.ok) {
+            const resData = await apiResponse.json();
+            items = resData?.response?.body?.items;
           }
+        } catch (fetchErr) {
+          console.warn("전국 푸드트럭 OpenAPI 수신 오류 (우회 적재 시도):", fetchErr.message);
+        }
 
-          const resData = await apiResponse.json();
-          const items = resData?.response?.body?.items;
-
-          if (items && Array.isArray(items) && items.length > 0) {
-            await dbPool.query('BEGIN');
-            try {
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const lat = parseFloat(item.latitude);
-                const lng = parseFloat(item.longitude);
-
-                if (!isNaN(lat) && !isNaN(lng) && lat > 33 && lat < 39 && lng > 124 && lng < 132) {
-                  const name = item.permitAreaNm || "푸드트럭 허가구역";
-                  const mngAgency = item.permitAreaMngNm || "지자체 관리기관";
-                  const startTm = item.operatingStrtTm || "미정";
-                  const endTm = item.operatingEndTm || "미정";
-                  const address = item.rdnmadr || item.lnmadr || "주소 정보 없음";
-                  const youthFav = item.prtcstPermitAt === 'Y' ? "🟢 청년층/소외계층 신청 우대 구역" : "합법 점용 지정 구역";
-                  const rulesText = `${youthFav} | 관리기관: ${mngAgency} | 운영시간: ${startTm} ~ ${endTm} | 소재지: ${address}`;
-                  const id = `gov-spot-${i}`;
-
-                  await dbPool.query(`
-                    INSERT INTO legal_spots (id, name, lat, lng, rules, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, NOW())
-                    ON CONFLICT (id) DO UPDATE SET
-                      name = EXCLUDED.name,
-                      lat = EXCLUDED.lat,
-                      lng = EXCLUDED.lng,
-                      rules = EXCLUDED.rules,
-                      updated_at = NOW()
-                  `, [id, name, lat, lng, rulesText]);
-                }
-              }
-              await dbPool.query('COMMIT');
-              return NextResponse.json({ 
-                success: true, 
-                message: `✅ [전국 푸드트럭 허가구역 API] ${items.length}건 동기화 및 DB 적재 완료!` 
-              });
-            } catch (txErr) {
-              await dbPool.query('ROLLBACK');
-              throw txErr;
+        // 💡 정부 OpenAPI 응답이 비어있거나 활용 권한 유예 상태인 경우
+        // 500 에러를 뱉어내지 않고 백업 30대 명당 데이터를 DB에 강제로 동기화(Upsert)하여 완료 처리합니다.
+        if (!items || !Array.isArray(items) || items.length === 0) {
+          console.log("ℹ️ [Weather Sync] 정부 API 응답이 없거나 제한됨. 백업 30대 명당으로 Neon DB 강제 동기화를 진행합니다.");
+          await dbPool.query('BEGIN');
+          try {
+            for (const spot of FALLBACK_LEGAL_SPOTS) {
+              await dbPool.query(`
+                INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  lat = EXCLUDED.lat,
+                  lng = EXCLUDED.lng,
+                  rules = EXCLUDED.rules,
+                  updated_at = NOW()
+              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true]);
             }
-          } else {
-            throw new Error("API 응답 레코드가 존재하지 않습니다.");
+            await dbPool.query('COMMIT');
+            
+            const date = new Date();
+            mockSpotsLastUpdated = format24hDate(date);
+            mockSpotsCount = FALLBACK_LEGAL_SPOTS.length;
+
+            return NextResponse.json({ 
+              success: true, 
+              isMock: true,
+              message: `🔄 [백업 동기화] ${mockSpotsLastUpdated} 기준 백업 30대 명당 정보가 Neon DB에 정상 동기화 완료되었습니다!` 
+            });
+          } catch (seedErr) {
+            await dbPool.query('ROLLBACK');
+            console.error("❌ [Weather Sync] 백업 시드 동기화 실패:", seedErr.message);
+            return NextResponse.json({ success: false, error: seedErr.message }, { status: 500 });
+          }
+        }
+
+        // 진짜 데이터가 무사히 도달한 경우 (정상 적재)
+        try {
+          await dbPool.query('BEGIN');
+          try {
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              const lat = parseFloat(item.latitude);
+              const lng = parseFloat(item.longitude);
+
+              if (!isNaN(lat) && !isNaN(lng) && lat > 33 && lat < 39 && lng > 124 && lng < 132) {
+                const name = item.permitAreaNm || "푸드트럭 허가구역";
+                const mngAgency = item.permitAreaMngNm || "지자체 관리기관";
+                const startTm = item.operatingStrtTm || "미정";
+                const endTm = item.operatingEndTm || "미정";
+                const address = item.rdnmadr || item.lnmadr || "주소 정보 없음";
+                const youthFav = item.prtcstPermitAt === 'Y' ? "🟢 청년층/소외계층 신청 우대 구역" : "합법 점용 지정 구역";
+                const rulesText = `${youthFav} | 관리기관: ${mngAgency} | 운영시간: ${startTm} ~ ${endTm} | 소재지: ${address}`;
+                const id = `gov-spot-${i}`;
+
+                await dbPool.query(`
+                  INSERT INTO legal_spots (id, name, lat, lng, rules, updated_at)
+                  VALUES ($1, $2, $3, $4, $5, NOW())
+                  ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    lat = EXCLUDED.lat,
+                    lng = EXCLUDED.lng,
+                    rules = EXCLUDED.rules,
+                    updated_at = NOW()
+                `, [id, name, lat, lng, rulesText]);
+              }
+            }
+            await dbPool.query('COMMIT');
+            
+            const date = new Date();
+            mockSpotsLastUpdated = format24hDate(date);
+            mockSpotsCount = items.length; // 실제 카운트 갱신
+
+            return NextResponse.json({ 
+              success: true, 
+              message: `✅ [전국 푸드트럭 허가구역 API] ${mockSpotsLastUpdated} 기준 ${items.length}건 실시간 연동 및 Neon DB 적재 완료!` 
+            });
+          } catch (txErr) {
+            await dbPool.query('ROLLBACK');
+            throw txErr;
           }
         } catch (syncErr) {
           console.error("동기화 실행 중 에러:", syncErr.message);
