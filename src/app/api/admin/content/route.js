@@ -203,12 +203,35 @@ export async function GET(request) {
       `;
     }
 
-    // 📍 좌표 쿼리 매개변수가 들어오면, 기상청 API 연동을 통해 동적으로 DB 캐시를 갱신
+    // 📍 좌표 쿼리 매개변수가 들어오면, 기상청 API 연동을 통해 동적으로 DB 캐시를 갱신 (1시간 TTL 캐시 검증)
     if (latParam && lngParam && regionParam) {
       const lat = parseFloat(latParam);
       const lng = parseFloat(lngParam);
       if (!isNaN(lat) && !isNaN(lng)) {
-        await fetchAndSyncWeather(lat, lng, regionParam);
+        // 1. 해당 지역의 기존 날씨 캐시 데이터 및 마지막 업데이트 시각 조회
+        const existingCache = await sql`
+          SELECT "updatedAt" FROM "WeatherForecast"
+          WHERE "region" = ${regionParam}
+          ORDER BY "updatedAt" DESC
+          LIMIT 1
+        `;
+
+        let shouldUpdate = true;
+        if (existingCache.length > 0) {
+          const lastUpdate = new Date(existingCache[0].updatedAt);
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          
+          // 마지막 업데이트 시각이 1시간 이내라면 기상청 API 갱신 스킵
+          if (lastUpdate > oneHourAgo) {
+            shouldUpdate = false;
+            console.log(`⚡ [Weather Cache Hit] '${regionParam}' 날씨 정보가 1시간 이내에 업데이트되었습니다. 캐시를 재사용합니다.`);
+          }
+        }
+
+        if (shouldUpdate) {
+          console.log(`🔄 [Weather Cache Miss/Expired] '${regionParam}' 날씨가 만료되었거나 캐시가 없습니다. 실시간 기상청 동기화를 실행합니다.`);
+          await fetchAndSyncWeather(lat, lng, regionParam);
+        }
       }
     }
 
