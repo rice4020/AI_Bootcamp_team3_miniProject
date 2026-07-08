@@ -174,41 +174,68 @@ export async function GET(request) {
   }
 
   try {
-    // 2. 1순위로 Neon DB의 Event 혹은 events 테이블 조회
+    // 2. Event 테이블과 SnsExtraction 테이블을 UNION ALL로 통합 조회
     let dbEvents = [];
     try {
       const res = await dbPool.query(`
-        SELECT 
-          id, 
-          title AS "name", 
-          location, 
-          latitude AS "lat", 
-          longitude AS "lng", 
-          "startDate" AS "start_date", 
-          "endDate" AS "end_date", 
+        SELECT
+          id,
+          title,
+          location,
+          latitude,
+          longitude,
+          "startDate" AS start_date,
+          "endDate"   AS end_date,
           scale,
-          description 
+          description,
+          'Event' AS source_table
         FROM "Event"
+
+        UNION ALL
+
+        SELECT
+          id,
+          title,
+          location,
+          latitude,
+          longitude,
+          "startDate" AS start_date,
+          "endDate"   AS end_date,
+          scale,
+          description,
+          'SnsExtraction' AS source_table
+        FROM "SnsExtraction"
+
+        ORDER BY
+          -- 1순위: 진행 중인 행사 (오늘이 start~end 사이) 먼저
+          CASE WHEN start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE THEN 0 ELSE 1 END,
+          -- 2순위: 오늘로부터 가장 가까운 날짜 순
+          ABS(start_date - CURRENT_DATE) ASC NULLS LAST
       `);
       dbEvents = res.rows;
-      console.log(`✅ [API/events] "Event" 테이블로부터 ${dbEvents.length}건 행사 로드 성공.`);
+      console.log(`✅ [API/events] Event(${res.rows.filter(r=>r.source_table==='Event').length}건) + SnsExtraction(${res.rows.filter(r=>r.source_table==='SnsExtraction').length}건) 통합 로드 성공.`);
     } catch (e1) {
-      console.warn(`⚠️ [API/events] "Event" 테이블 조회 실패. 2순위 "events" 조회를 시도합니다:`, e1.message);
+      console.warn(`⚠️ [API/events] UNION 조회 실패, Event 단독 조회를 시도합니다:`, e1.message);
       try {
         const res2 = await dbPool.query(`
-          SELECT 
-            id::text, 
-            name, 
-            location, 
-            latitude AS "lat", 
-            longitude AS "lng", 
-            start_date, 
-            end_date, 
-            description 
-          FROM events
+          SELECT
+            id,
+            title,
+            location,
+            latitude,
+            longitude,
+            "startDate" AS start_date,
+            "endDate"   AS end_date,
+            scale,
+            description,
+            'Event' AS source_table
+          FROM "Event"
+          ORDER BY
+            CASE WHEN "startDate" <= CURRENT_DATE AND "endDate" >= CURRENT_DATE THEN 0 ELSE 1 END,
+            ABS("startDate" - CURRENT_DATE) ASC NULLS LAST
         `);
         dbEvents = res2.rows;
-        console.log(`✅ [API/events] "events" 테이블로부터 ${dbEvents.length}건 행사 로드 성공.`);
+        console.log(`✅ [API/events] "Event" 단독 테이블로부터 ${dbEvents.length}건 로드.`);
       } catch (e2) {
         console.warn(`❌ [API/events] 모든 행사 테이블 쿼리 실패:`, e2.message);
         throw e2;
@@ -217,24 +244,25 @@ export async function GET(request) {
 
     // 3. 불러온 DB 행사 목록에 대하여 반경 연산 필터링 실행
     const formatted = dbEvents.map(row => {
-      // 💡 ID 접두사 또는 특정 컬럼 특징을 기반으로 API 출처를 동적으로 매핑합니다.
-      let source = "전국문화축제 표준데이터"; // 기본값
-      if (row.id && (String(row.id).startsWith('perf-') || String(row.id).startsWith('show-'))) {
-        source = "전국공연행사 정보 표준데이터";
-      } else if (row.id && String(row.id).startsWith('mock-')) {
-        source = "임시 샘플데이터";
-      }
+      // 출처 테이블에 따른 소스 라벨 결정
+      const sourceTable = row.source_table || 'Event';
+      const source = sourceTable === 'SnsExtraction'
+        ? 'SNS 수집 데이터'
+        : '전국문화축제 표준데이터';
 
       return {
         id: row.id,
-        name: row.name,
+        name: row.title,          // title → name으로 통일
+        title: row.title,
         location: row.location,
-        latitude: parseFloat(row.lat),
-        longitude: parseFloat(row.lng),
+        latitude: row.latitude ? parseFloat(row.latitude) : null,
+        longitude: row.longitude ? parseFloat(row.longitude) : null,
         startDate: row.start_date ? new Date(row.start_date).toISOString().split('T')[0] : '미정',
         endDate: row.end_date ? new Date(row.end_date).toISOString().split('T')[0] : '미정',
+        scale: row.scale || '',
         description: row.description || '',
-        source: source, // ◀ API 출처 정보 수혈
+        source,          // ◀ 출처 라벨
+        sourceTable,     // ◀ 테이블 구분 (Event | SnsExtraction)
         isMock: false
       };
     });

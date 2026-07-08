@@ -70,6 +70,13 @@ export default function OwnerSalesHistoryPage() {
   const [inputQuantity, setInputQuantity] = useState('750');
   const [inputWeather, setInputWeather] = useState('맑음');
 
+  // 🎡 주변 행사/축제 목록 상태
+  const [eventsList, setEventsList] = useState([]);
+  // 📌 선택된 행사 (상세 모달용)
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  // ⏳ 행사 데이터 로딩 중 여부
+  const [isEventsLoading, setIsEventsLoading] = useState(false);
+
   // 1. 로그인 세션 확인 및 데이터 로드
   useEffect(() => {
     const userSession = getCurrentSession();
@@ -139,6 +146,26 @@ export default function OwnerSalesHistoryPage() {
       }
     };
     fetchGovSpots();
+  }, []);
+
+  // 1.6 주변 행사/축제 목록 API 호출
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setIsEventsLoading(true);
+      try {
+        // 📡 /api/events에서 Event + SnsExtraction UNION 결과 가져오기
+        const res = await fetch('/api/events?lat=37.5665&lng=126.9780&radius=');
+        const data = await res.json();
+        if (data.success && data.data) {
+          setEventsList(data.data); // API 응답 필드명: data.data
+        }
+      } catch (err) {
+        console.warn('⚠️ 행사 데이터 로드 실패:', err);
+      } finally {
+        setIsEventsLoading(false);
+      }
+    };
+    fetchEvents();
   }, []);
 
   // 💾 매출 정보 신규 등록
@@ -228,8 +255,186 @@ export default function OwnerSalesHistoryPage() {
 
       <main className="mobile-safe-bottom" style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
         <div className="glass-panel" style={{ width: '100%', maxWidth: '850px', padding: '36px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
-          {/* 타이틀 */}
+
+          {/* 🎡 행사/축제 목록 섹션 */}
+          <div>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: '800', marginBottom: '4px', color: 'var(--text-primary)' }}>
+              🎡 주변 행사 및 축제 정보
+            </h2>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              수집된 공공데이터 기반 행사 목록입니다. 행사를 클릭하면 상세 정보를 볼 수 있습니다.
+            </p>
+
+            {/* 행사 목록 */}
+            {isEventsLoading ? (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>⏳ 행사 정보 불러오는 중...</p>
+            ) : eventsList.length === 0 ? (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>등록된 행사 정보가 없습니다.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {eventsList.map((ev, idx) => {
+                  // 수집 유형 판별: sourceTable로 출처 구분 (Event=공공, SnsExtraction=SNS 수집, isMock=더미)
+                  const isMock = ev.isMock || false;
+                  const sourceTable = ev.sourceTable || 'Event';
+                  const sourceLabel = isMock
+                    ? '더미'
+                    : sourceTable === 'SnsExtraction'
+                      ? 'SNS 수집'
+                      : '공공데이터';
+                  const badgeColor = isMock
+                    ? { bg: 'rgba(100,100,100,0.1)', color: '#888' }
+                    : sourceTable === 'SnsExtraction'
+                      ? { bg: 'rgba(230, 81, 0, 0.1)', color: '#E65100' }   // 주황 - SNS 수집
+                      : { bg: 'rgba(0, 123, 255, 0.1)', color: '#007bff' }; // 파랑 - 공공데이터
+
+                  return (
+                    <div
+                      key={ev.id || idx}
+                      onClick={() => setSelectedEvent(ev)}
+                      style={{
+                        padding: '14px 16px',
+                        background: '#fff',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        boxShadow: 'var(--shadow-sm)',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '5px'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = 'var(--shadow-sm)'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* 행사명 */}
+                        <span style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--text-primary)', flex: 1 }}>
+                          {ev.title || ev.name || '행사명 미정'}
+                        </span>
+                        {/* 수집 유형 배지 */}
+                        <span style={{
+                          fontSize: '0.62rem', fontWeight: '800',
+                          padding: '2px 7px', borderRadius: '4px',
+                          background: badgeColor.bg, color: badgeColor.color,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {sourceLabel}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          📅 {ev.startDate || '일정 미정'}{ev.endDate && ev.endDate !== ev.startDate ? ` ~ ${ev.endDate}` : ''}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          📍 {ev.location || '장소 미정'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 행사 상세 모달 */}
+          {selectedEvent && (
+            <div
+              onClick={() => setSelectedEvent(null)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.45)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '24px'
+              }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: '#fff',
+                  borderRadius: '20px',
+                  padding: '32px',
+                  maxWidth: '520px',
+                  width: '100%',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  maxHeight: '80vh',
+                  overflowY: 'auto'
+                }}
+              >
+                {/* 모달 헤더 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.4', flex: 1 }}>
+                    🎡 {selectedEvent.title || selectedEvent.name || '행사명 미정'}
+                  </h3>
+                  <button
+                    onClick={() => setSelectedEvent(null)}
+                    style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: '12px' }}
+                  >✕</button>
+                </div>
+
+                {/* 수집 유형 배지 */}
+                <div>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: '800',
+                    padding: '3px 9px', borderRadius: '5px',
+                    background: selectedEvent.isMock
+                      ? 'rgba(100,100,100,0.1)'
+                      : (selectedEvent.sourceTable === 'SnsExtraction' ? 'rgba(230,81,0,0.1)' : 'rgba(0,123,255,0.1)'),
+                    color: selectedEvent.isMock
+                      ? '#888'
+                      : (selectedEvent.sourceTable === 'SnsExtraction' ? '#E65100' : '#007bff')
+                  }}>
+                    수집유형: {selectedEvent.isMock ? '더미 데이터' : (selectedEvent.sourceTable === 'SnsExtraction' ? 'SNS 수집 데이터' : (selectedEvent.source || '공공데이터포털'))}
+                  </span>
+                </div>
+
+                {/* 상세 정보 행 */}
+                {[
+                  { label: '📅 기간', value: selectedEvent.startDate
+                    ? `${selectedEvent.startDate}${selectedEvent.endDate && selectedEvent.endDate !== selectedEvent.startDate ? ` ~ ${selectedEvent.endDate}` : ''}`
+                    : '일정 미정' },
+                  { label: '📍 장소', value: selectedEvent.location || '장소 미정' },
+                  { label: '🏢 주최기관', value: selectedEvent.organizer || selectedEvent.source || '미정' },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-light)',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <p style={{ margin: '0 0 3px', fontSize: '0.68rem', fontWeight: '800', color: 'var(--text-muted)' }}>{label}</p>
+                    <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>{value}</p>
+                  </div>
+                ))}
+
+                {/* 행사 내용 */}
+                {(selectedEvent.description || selectedEvent.desc) && (
+                  <div style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-light)',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <p style={{ margin: '0 0 6px', fontSize: '0.68rem', fontWeight: '800', color: 'var(--text-muted)' }}>📝 행사 내용</p>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                      {selectedEvent.description || selectedEvent.desc}
+                    </p>
+                  </div>
+                )}
+
+                <Button variant="secondary" onClick={() => setSelectedEvent(null)} style={{ marginTop: '4px' }}>
+                  닫기
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 구분선 */}
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0' }} />
+
+          {/* 📈 영업 이력 섹션 설명 */}
           <div>
             <h2 style={{ fontSize: '1.45rem', fontWeight: '800', marginBottom: '8px', color: 'var(--text-primary)' }}>
               📈 영업 이력 기록 및 상권 효율성 분석기
