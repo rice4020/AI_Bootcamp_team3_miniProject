@@ -23,8 +23,11 @@ export default function AdminContentPage() {
   // 행사 편집/수정용 선택 State
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  // 기상 기준 위치 State
-  const [weatherRegion, setWeatherRegion] = useState('수도권 권역');
+  // 모달 활성화 State (등록/수정 팝업)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // 기상 기준 위치 State (초기 빈 문자열 설정으로 미선택 감지)
+  const [weatherRegion, setWeatherRegion] = useState('');
 
   // 행사 등록 폼 State
   const [eventName, setEventName] = useState('');
@@ -55,11 +58,14 @@ export default function AdminContentPage() {
       const result = await response.json();
       if (result.success) {
         setEvents(result.events || []);
-        setWeatherList(result.weather || []);
-        if (result.weather && result.weather.length > 0) {
-          setWeatherRegion(result.weather[0].region);
-        } else if (region) {
-          setWeatherRegion(region);
+        // lat, lng, region이 명시적으로 전달된 경우(카드 클릭)에만 날씨 데이터 상태 업데이트
+        if (lat && lng && region) {
+          setWeatherList(result.weather || []);
+          if (result.weather && result.weather.length > 0) {
+            setWeatherRegion(result.weather[0].region);
+          } else {
+            setWeatherRegion(region);
+          }
         }
       } else {
         console.error('API Error:', result.error);
@@ -141,6 +147,7 @@ export default function AdminContentPage() {
         alert(isEdit ? "📝 행사 정보가 성공적으로 수정되었습니다." : "🎪 새로운 문화 행사가 성공적으로 등록되었습니다.");
         // 폼 초기화 및 수정 모드 클리어
         handleCancelEdit();
+        setIsModalOpen(false);
         // 목록 갱신
         fetchContentData();
       } else {
@@ -160,6 +167,7 @@ export default function AdminContentPage() {
     setEventEndDate(ev.endDate);
     setEventScale(ev.scale);
     setEventLocation(ev.location);
+    setIsModalOpen(true);
   };
 
   // 행사 수정 취소 핸들러
@@ -170,6 +178,7 @@ export default function AdminContentPage() {
     setEventEndDate('');
     setEventScale('');
     setEventLocation('');
+    setIsModalOpen(false);
   };
 
   // 4. 행사 삭제 요청 (DELETE)
@@ -210,7 +219,7 @@ export default function AdminContentPage() {
       <Navbar userType="admin" />
 
       <main style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
-        <div style={{ width: '100%', maxWidth: '1000px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+        <div style={{ width: '100%', maxWidth: '1250px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
           <div>
             <h2 style={{ fontSize: '1.75rem', fontWeight: '800', marginBottom: '8px' }}>
@@ -225,73 +234,19 @@ export default function AdminContentPage() {
             
             {/* 📋 좌측: 문화 행사 정보 관리 */}
             <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
-                🎡 문화 행사 정보 목록
-              </h3>
-
-              {/* 신규 등록 및 수정 폼 */}
-              <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '24px' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: '700', color: selectedEvent ? 'var(--secondary)' : 'var(--primary)' }}>
-                  {selectedEvent ? '✏️ 행사 정보 수정' : '+ 신규 행사 수동 등록'}
-                </span>
-                
-                <Input
-                  id="event-name-input"
-                  label="행사명"
-                  placeholder="예: 여의도 밤도깨비 야시장"
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                  required
-                />
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <Input
-                    id="event-start-date"
-                    label="시작일"
-                    type="date"
-                    value={eventStartDate}
-                    onChange={(e) => setEventStartDate(e.target.value)}
-                    required
-                  />
-                  <Input
-                    id="event-end-date"
-                    label="종료일"
-                    type="date"
-                    value={eventEndDate}
-                    onChange={(e) => setEventEndDate(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '12px' }}>
-                  <Input
-                    id="event-scale-input"
-                    label="인파 규모"
-                    placeholder="예: 대규모 (3만명)"
-                    value={eventScale}
-                    onChange={(e) => setEventScale(e.target.value)}
-                  />
-                  <Input
-                    id="event-location-input"
-                    label="구체적 행사 지역"
-                    placeholder="예: 여의도 한강공원"
-                    value={eventLocation}
-                    onChange={(e) => setEventLocation(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                  <Button type="submit" variant="primary" style={{ flex: 1 }}>
-                    {selectedEvent ? '수정 완료' : '등록'}
-                  </Button>
-                  {selectedEvent && (
-                    <Button type="button" variant="secondary" onClick={handleCancelEdit} style={{ flex: 1 }}>
-                      취소
-                    </Button>
-                  )}
-                </div>
-              </form>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
+                  🎡 문화 행사 정보 목록
+                </h3>
+                <Button 
+                  type="button" 
+                  variant="primary" 
+                  onClick={() => { handleCancelEdit(); setIsModalOpen(true); }}
+                  style={{ padding: '8px 16px', fontSize: '0.8rem' }}
+                >
+                  + 신규 행사 등록
+                </Button>
+              </div>
 
               {/* 🔍 행사 검색바 */}
               <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
@@ -325,7 +280,15 @@ export default function AdminContentPage() {
               {loading ? (
                 <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>행사 데이터를 조회하고 있습니다...</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '12px', 
+                  maxHeight: '520px', 
+                  overflowY: 'auto',
+                  paddingRight: '6px',
+                  scrollbarWidth: 'thin'
+                }}>
                   {events.length === 0 ? (
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>등록된 축제가 없습니다.</p>
                   ) : (
@@ -339,41 +302,93 @@ export default function AdminContentPage() {
                           alignItems: 'center', 
                           padding: '16px', 
                           background: 'var(--surface-light)', 
-                          borderRadius: '10px', 
+                          borderRadius: '12px', 
                           border: '1px solid var(--border)',
                           cursor: 'pointer',
-                          transition: 'all 0.2s ease-in-out'
+                          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)';
+                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.06)';
                           e.currentTarget.style.borderColor = 'var(--primary)';
+                          e.currentTarget.style.background = 'var(--background)';
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.transform = 'none';
-                          e.currentTarget.style.boxShadow = 'none';
+                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
                           e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.background = 'var(--surface-light)';
                         }}
                         title="클릭 시 이 행사의 기상 상황을 실시간 동기화합니다"
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{ev.name}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                            📍 장소: {ev.location} | 📅 기간: {ev.startDate} ~ {ev.endDate} ({ev.scale})
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, paddingRight: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-primary)' }}>{ev.name}</span>
+                            {ev.scale && (
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                padding: '2px 6px', 
+                                background: 'rgba(255, 90, 95, 0.1)', 
+                                color: 'var(--primary)', 
+                                borderRadius: '4px',
+                                fontWeight: '600'
+                              }}>
+                                {ev.scale}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            📍 <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{ev.location}</span>
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            📅 {ev.startDate} ~ {ev.endDate}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                           <Button 
                             variant="secondary" 
                             onClick={(e) => { e.stopPropagation(); handleStartEdit(ev); }}
-                            style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '6px' }}
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '0.75rem', 
+                              border: '1px solid var(--border)', 
+                              color: 'var(--text-secondary)', 
+                              borderRadius: '6px',
+                              background: 'var(--surface)',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--primary)';
+                              e.currentTarget.style.color = 'var(--primary)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                              e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
                           >
                             수정
                           </Button>
                           <Button 
                             variant="secondary" 
                             onClick={(e) => { e.stopPropagation(); handleDeleteEvent(ev.id); }}
-                            style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '6px' }}
+                            style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '0.75rem', 
+                              border: '1px solid var(--border)', 
+                              color: 'var(--text-secondary)', 
+                              borderRadius: '6px',
+                              background: 'var(--surface)',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--danger)';
+                              e.currentTarget.style.color = 'var(--danger)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                              e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
                           >
                             삭제
                           </Button>
@@ -406,7 +421,25 @@ export default function AdminContentPage() {
                 )}
               </div>
 
-              {loading ? (
+              {!weatherRegion ? (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  padding: '60px 20px', 
+                  background: 'rgba(255,255,255,0.01)', 
+                  border: '1px dashed var(--border)', 
+                  borderRadius: '12px', 
+                  gap: '16px' 
+                }}>
+                  <span style={{ fontSize: '3rem' }}>🎪🌦️</span>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '1.5', fontWeight: '500' }}>
+                    행사 목록에서 보고 싶은 행사를 선택하시면<br />
+                    해당 장소의 실시간 날씨 현황이 표시됩니다.
+                  </p>
+                </div>
+              ) : loading ? (
                 <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>날씨 데이터를 연동하고 있습니다...</p>
               ) : weatherRegion.includes('미등록') || weatherRegion.includes('존재하지 않음') ? (
                 <div style={{ 
@@ -455,6 +488,114 @@ export default function AdminContentPage() {
             </div>
 
           </div>
+
+          {/* 🎪 등록 및 수정 팝업 모달 */}
+          {isModalOpen && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              backdropFilter: 'blur(4px)'
+            }}>
+              <div className="glass-panel" style={{
+                width: '100%',
+                maxWidth: '550px',
+                padding: '32px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                background: 'var(--surface)',
+                borderRadius: '16px',
+                border: '1px solid var(--border)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
+                    {selectedEvent ? '✏️ 행사 정보 수정' : '🎪 신규 행사 수동 등록'}
+                  </h3>
+                  <button 
+                    onClick={handleCancelEdit} 
+                    style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      fontSize: '1.25rem', 
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      transition: 'color 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <Input
+                    id="event-name-input"
+                    label="행사명 *"
+                    placeholder="예: 여의도 밤도깨비 야시장"
+                    value={eventName}
+                    onChange={(e) => setEventName(e.target.value)}
+                    required
+                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <Input
+                      id="event-start-date"
+                      label="시작일 *"
+                      type="date"
+                      value={eventStartDate}
+                      onChange={(e) => setEventStartDate(e.target.value)}
+                      required
+                    />
+                    <Input
+                      id="event-end-date"
+                      label="종료일 *"
+                      type="date"
+                      value={eventEndDate}
+                      onChange={(e) => setEventEndDate(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '16px' }}>
+                    <Input
+                      id="event-scale-input"
+                      label="인파 규모"
+                      placeholder="예: 대규모 (3만명)"
+                      value={eventScale}
+                      onChange={(e) => setEventScale(e.target.value)}
+                    />
+                    <Input
+                      id="event-location-input"
+                      label="구체적 행사 지역 *"
+                      placeholder="예: 여의도 한강공원"
+                      value={eventLocation}
+                      onChange={(e) => setEventLocation(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                    <Button type="submit" variant="primary" style={{ flex: 1 }}>
+                      {selectedEvent ? '수정 완료' : '등록 완료'}
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={handleCancelEdit} style={{ flex: 1 }}>
+                      취소
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>
