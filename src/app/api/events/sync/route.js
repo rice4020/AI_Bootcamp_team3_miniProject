@@ -5,7 +5,7 @@ import { sql } from '../../../../lib/db';
 // 빌드 시점 정적 프리렌더링 방지 — 런타임 호출 전용 라우트
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   const serviceKey = process.env.PUBLIC_DATA_API_SERVICE_KEY;
 
   if (!serviceKey) {
@@ -14,6 +14,13 @@ export async function GET() {
   }
 
   try {
+    const { searchParams } = new URL(request.url);
+    const shouldReset = searchParams.get('reset') === 'true';
+
+    if (shouldReset) {
+      console.log('🧹 [Sync API] 강제 리셋(?reset=true) 파라미터 감지. Event 테이블 기존 데이터를 전체 소거합니다.');
+      await sql`DELETE FROM "Event"`;
+    }
     // 1. 공공데이터포털 API 호출 (1000개 수집)
     const targetUrl = `http://api.data.go.kr/openapi/tn_pubr_public_cltur_fstvl_api?serviceKey=${encodeURIComponent(serviceKey)}&type=json&pageNo=1&numOfRows=1000`;
     
@@ -45,8 +52,9 @@ export async function GET() {
       const lat = parseFloat(item.latitude);
       const lng = parseFloat(item.longitude);
 
-      // 날짜 파싱 검증
-      if (!startDateStr || !endDateStr) {
+      // 날짜 파싱 검증 및 이미 종료된 행사(만료된 축제) 필터링
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (!startDateStr || !endDateStr || endDateStr < todayStr) {
         skippedCount++;
         continue;
       }
@@ -75,15 +83,22 @@ export async function GET() {
       const validLat = (!isNaN(lat) && lat > 32 && lat < 43) ? lat : null;
       const validLng = (!isNaN(lng) && lng > 124 && lng < 133) ? lng : null;
       
-      // location 값에 원시 텍스트 주소 대신 "위도, 경도" 혹은 "존재하지 않음" 문자열을 적재
-      const locationCoords = (validLat && validLng) ? `${validLat}, ${validLng}` : '존재하지 않음';
+      // 도로명 주소(rdnmadr) 혹은 지번 주소(lnmadr)를 활용하여 정식 location 값을 적재
+      let locationAddress = item.rdnmadr || item.lnmadr;
+      if (!locationAddress) {
+        if (validLat && validLng) {
+          locationAddress = `${validLat.toFixed(4)}, ${validLng.toFixed(4)} (좌표 기준)`;
+        } else {
+          locationAddress = '주소 정보 없음';
+        }
+      }
 
       // 3. Neon DB "Event" 테이블에 적재
       await sql`
         INSERT INTO "Event" ("title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description")
         VALUES (
           ${title}, 
-          ${locationCoords}, 
+          ${locationAddress}, 
           ${startDateStr}::date, 
           ${endDateStr}::date, 
           ${scale}, 
