@@ -18,9 +18,28 @@ function readSyncStatus() {
   }
   return {
     "api-1": { lastUpdated: "2026-07-07 07:30", collectedCount: 72 },
-    "api-3": { lastUpdated: "2026-07-07 07:30", collectedCount: 3420 }
+    "api-2": { lastUpdated: "2026-07-01 08:30", collectedCount: 120 },
+    "api-3": { lastUpdated: "2026-07-07 07:30", collectedCount: 3420 },
+    "api-4": { lastUpdated: "2026-07-08 09:00", collectedCount: 1240 },
+    "api-5": { lastUpdated: "2026-07-08 09:00", collectedCount: 85 }
   };
 }
+
+let mockCommercialDetails = [
+  { id: 'det-c1', regionName: "강남역 중심 상권", zoneType: "발달상권 (일평균 유동인구 12만명)", state: "정상연동" },
+  { id: 'det-c2', regionName: "홍대입구역 청년 상권", zoneType: "골목상권 (문화/예술 업종 밀집)", state: "정상연동" },
+  { id: 'det-c3', regionName: "여의도 직장인 핵심 상권", zoneType: "오피스상권 (주말 공동화 현상 존재)", state: "정상연동" },
+  { id: 'det-c4', regionName: "가로수길 트렌드 상권", zoneType: "발달상권 (패션/뷰티 업종 우세)", state: "정상연동" },
+  { id: 'det-c5', regionName: "성수동 수제화 카페 상권", zoneType: "골목상권 (식음료/F&B 성장세)", state: "정상연동" }
+];
+
+let mockCulturalDetails = [
+  { id: 'det-cul1', eventName: "2026 한강 밤도깨비 야시장 푸드 카니발", eventPeriod: "2026-05-01 ~ 2026-10-28", state: "정상연동" },
+  { id: 'det-cul2', eventName: "경복궁 가을 야간 특별 야외 축제", eventPeriod: "2026-09-01 ~ 2026-10-15", state: "정상연동" },
+  { id: 'det-cul3', eventName: "상암 노을빛 재즈 페스티벌 2026", eventPeriod: "2026-10-12 ~ 2026-10-14", state: "정상연동" },
+  { id: 'det-cul4', eventName: "인천 소래포구 대하 야외 수산 축제", eventPeriod: "2026-09-22 ~ 2026-09-25", state: "정상연동" },
+  { id: 'det-cul5', eventName: "가평 자라섬 국제 재즈 아일랜드 파티", eventPeriod: "2026-10-03 ~ 2026-10-06", state: "정상연동" }
+];
 
 function writeSyncStatus(status) {
   try {
@@ -39,15 +58,15 @@ let pool = null;
 function getDbPool() {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) return null;
-  
+
   // 💡 가짜 DB 주소 플레이스홀더가 기입된 경우, 진짜 연동을 시도하지 않고 모의(Mock) 모드로 작동하도록 차단
   if (
-    dbUrl.includes("your-neon-hostname") || 
+    dbUrl.includes("your-neon-hostname") ||
     dbUrl.includes("username:password")
   ) {
     return null;
   }
-  
+
   if (!pool) {
     pool = new Pool({
       connectionString: dbUrl,
@@ -81,7 +100,7 @@ function format24hDate(date) {
   };
   const formatter = new Intl.DateTimeFormat('ko-KR', options);
   const parts = formatter.formatToParts(date);
-  
+
   let yyyy = '', mm = '', dd = '', hh = '', min = '';
   parts.forEach(part => {
     if (part.type === 'year') yyyy = part.value;
@@ -90,7 +109,7 @@ function format24hDate(date) {
     if (part.type === 'hour') hh = part.value;
     if (part.type === 'minute') min = part.value;
   });
-  
+
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
@@ -99,25 +118,29 @@ async function checkApiConnection(apiType) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3초 지나면 타임아웃으로 중단
-    
+
     let targetUrl = '';
     if (apiType === 'weather' || apiType === 'spots') {
       targetUrl = 'https://www.data.go.kr'; // 공공데이터포털 메인 도메인 (무응답 차단 방화벽 예방을 위해 상시 열려있는 메인 사이트 핑 테스트로 변경)
     } else if (apiType === 'naver') {
       targetUrl = 'https://naveropenapi.apigw.ntruss.com'; // 네이버 클라우드 플랫폼 API 도메인
+    } else if (apiType === 'commercial') {
+      targetUrl = 'https://www.sbiz.or.kr'; // 소상공인시장진흥공단
+    } else if (apiType === 'cultural') {
+      targetUrl = 'https://www.culture.go.kr'; // 문화포털
     }
 
     if (!targetUrl) return 'active';
 
     // 📡 가볍게 GET 요청을 보내 응답 여부를 확인합니다.
-    const res = await fetch(targetUrl, { 
+    const res = await fetch(targetUrl, {
       method: 'GET',
       signal: controller.signal,
       next: { revalidate: 0 }
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     // 응답이 오거나 서버 오류 상태(500, 401, 400 등)가 오더라도 서버가 살아있어 응답을 준 것이므로 연결은 정상으로 봅니다.
     // 완전히 네트워크가 먹통이거나 도메인 주소가 잘못되었을 때만 에러로 판단합니다.
     if (res.status >= 200 && res.status < 500) {
@@ -230,7 +253,7 @@ async function fetchRealWeatherFromKMA(serviceKey, nx, ny) {
     const now = new Date();
     const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
     const kst = new Date(utc + (9 * 60 * 60 * 1000));
-    
+
     let year = kst.getFullYear();
     let month = kst.getMonth() + 1;
     let date = kst.getDate();
@@ -251,7 +274,7 @@ async function fetchRealWeatherFromKMA(serviceKey, nx, ny) {
 
     const baseDate = `${year}${month.toString().padStart(2, '0')}${date.toString().padStart(2, '0')}`;
     const baseTime = `${hours.toString().padStart(2, '0')}00`;
-    const targetUrl = `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${encodeURIComponent(serviceKey)}&type=json&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
+    const targetUrl = `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${encodeURIComponent(serviceKey)}&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
 
     const res = await fetch(targetUrl, { next: { revalidate: 0 } });
     if (!res.ok) return null;
@@ -293,7 +316,8 @@ async function fetchRealWeatherFromKMA(serviceKey, nx, ny) {
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url || '');
-    
+    const type = searchParams.get('type') || 'all';
+
     // 💡 Neon DB 셋업 편의를 위해 테이블이 없으면 자동 생성
     const dbPool = getDbPool();
     const hasDb = !IS_MOCK_MODE && dbPool;
@@ -339,59 +363,184 @@ export async function GET(request) {
     }
 
     const limit = 10;
-
-    // 🕒 0. 로컬 파일 저장소에서 기상청 및 네이버 동기화 상태 로드
     const syncStatus = readSyncStatus();
+
+    // 1. 대시보드 요약 모드 (?type=dashboard)
+    if (type === 'dashboard') {
+      const weatherStatus = await checkApiConnection('weather');
+      const spotsStatus = await checkApiConnection('spots');
+      const naverStatus = await checkApiConnection('naver');
+      const commercialStatus = await checkApiConnection('commercial');
+      const culturalStatus = await checkApiConnection('cultural');
+
+      const weatherTotal = syncStatus["api-1"]?.collectedCount || 72;
+      const commercialTotal = syncStatus["api-4"]?.collectedCount || 1240;
+      const culturalTotal = syncStatus["api-5"]?.collectedCount || 85;
+
+      let stats = {
+        total: 0,
+        approved: 0,
+        rejected: 0,
+        pending: 0,
+        weather: mockWeatherDetails[0]?.value || "맑음, 24.5°C",
+        naverTotal: syncStatus["api-3"]?.collectedCount || 3420,
+        weatherTotal,
+        commercialTotal,
+        culturalTotal,
+        weatherStatus,
+        spotsStatus,
+        naverStatus,
+        commercialStatus,
+        culturalStatus
+      };
+
+      if (hasDb) {
+        try {
+          const countRes = await dbPool.query(`
+            SELECT 
+              COUNT(*) as count, 
+              COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
+              COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
+              COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
+            FROM legal_spots
+          `);
+          stats.total = parseInt(countRes.rows[0].count) || 0;
+          stats.approved = parseInt(countRes.rows[0].approved_count) || 0;
+          stats.rejected = parseInt(countRes.rows[0].rejected_count) || 0;
+          stats.pending = parseInt(countRes.rows[0].pending_count) || 0;
+
+          // 🎪 Event 테이블 행 수 조회 추가 연동
+          const eventCountRes = await dbPool.query('SELECT COUNT(*) as count FROM "Event"');
+          stats.culturalTotal = parseInt(eventCountRes.rows[0].count) || 0;
+
+          // ⛅ WeatherForecast 테이블 행 수 및 최신 정보 조회 연동
+          const weatherCountRes = await dbPool.query('SELECT COUNT(*) as count FROM "WeatherForecast"');
+          stats.weatherTotal = parseInt(weatherCountRes.rows[0].count) || 0;
+
+          const weatherLatestRes = await dbPool.query('SELECT "skyStatus", temperature FROM "WeatherForecast" ORDER BY id DESC LIMIT 1');
+          if (weatherLatestRes.rows.length > 0) {
+            const wRow = weatherLatestRes.rows[0];
+            stats.weather = `${wRow.skyStatus}, ${wRow.temperature}°C`;
+          }
+        } catch (dbErr) {
+          console.error("대시보드 통계 조회 중 DB 오류:", dbErr.message);
+        }
+      } else {
+        // Mock 모드 통계 집계
+        stats.total = mockSpotsCount;
+        stats.approved = mockSpotsDetails.filter(d => d.state === '승인됨').length;
+        stats.rejected = mockSpotsDetails.filter(d => d.state === '반려됨').length;
+        stats.pending = mockSpotsDetails.filter(d => d.state === '대기중').length;
+      }
+      return NextResponse.json({ success: true, stats });
+    }
+
+
     const weatherLastUpdated = syncStatus["api-1"]?.lastUpdated || "2026-07-07 07:30";
-    const api1Total = syncStatus["api-1"]?.collectedCount || 72;
-    const api1TotalPages = Math.ceil(api1Total / limit);
+    let api1Total = syncStatus["api-1"]?.collectedCount || 72;
+    let api1TotalPages = Math.ceil(api1Total / limit);
 
     const naverLastUpdated = syncStatus["api-3"]?.lastUpdated || "2026-07-07 07:30";
     const api3Total = syncStatus["api-3"]?.collectedCount || 3420;
     const api3TotalPages = Math.ceil(api3Total / limit);
 
+    const commercialLastUpdated = syncStatus["api-4"]?.lastUpdated || "2026-07-08 09:00";
+    const api4Total = syncStatus["api-4"]?.collectedCount || 1240;
+    const api4TotalPages = Math.ceil(api4Total / limit);
+
+    const culturalLastUpdated = syncStatus["api-5"]?.lastUpdated || "2026-07-08 09:00";
+    let api5Total = syncStatus["api-5"]?.collectedCount || 85;
+    let api5TotalPages = Math.ceil(api5Total / limit);
+
     // 📊 통합 API 종합 대시보드 통계 수치 초기화 및 기 기입
-    let stats = { 
-      total: 0, 
-      approved: 0, 
-      rejected: 0, 
+    let stats = {
+      total: 0,
+      approved: 0,
+      rejected: 0,
       pending: 0,
       weather: mockWeatherDetails[0]?.value || "맑음, 24.5°C",
-      naverTotal: api3Total
+      naverTotal: api3Total,
+      commercialTotal: api4Total,
+      culturalTotal: api5Total
     };
 
     // 각 API별 요청 페이지 파싱 (기본값: 1페이지, 한 페이지당 10개 고정)
     const pageApi1 = parseInt(searchParams.get('page_api1') || '1') || 1;
     const pageApi2 = parseInt(searchParams.get('page_api2') || '1') || 1;
     const pageApi3 = parseInt(searchParams.get('page_api3') || '1') || 1;
+    const pageApi4 = parseInt(searchParams.get('page_api4') || '1') || 1;
+    const pageApi5 = parseInt(searchParams.get('page_api5') || '1') || 1;
 
     // 1. 기상청 API 상태 및 데이터 매핑 (실시간 연결 상태 동적 확인)
     const weatherStatus = await checkApiConnection('weather');
-    
-    // 기상청 수집 이력 목록 동적 생성 (12개 격자 * 6개 시간대 = 72건 매칭)
-    let allWeatherData = [];
-    for (let i = 0; i < api1Total; i++) {
-      const locIdx = i % mockWeatherDetails.length;
-      const timeIdx = Math.floor(i / mockWeatherDetails.length);
-      const baseLoc = mockWeatherDetails[locIdx];
-      
-      const date = new Date(Date.now() - timeIdx * 3 * 60 * 60 * 1000);
-      const timeStr = format24hDate(date);
-      
-      const itemId = `kma-gen-${i}`;
-      allWeatherData.push({
-        id: itemId,
-        location: `${baseLoc.location} (위도: ${baseLoc.lat}, 경도: ${baseLoc.lng}) [${timeStr} 수집]`,
-        value: baseLoc.value,
-        state: mockStatesOverride[itemId] || baseLoc.state
-      });
+
+    let api1Sliced = [];
+
+    if (hasDb) {
+      try {
+        const countRes = await dbPool.query('SELECT COUNT(*) as count FROM "WeatherForecast"');
+        api1Total = parseInt(countRes.rows[0].count) || 0;
+        api1TotalPages = Math.ceil(api1Total / limit);
+
+        const offset = (pageApi1 - 1) * limit;
+        const listRes = await dbPool.query(
+          'SELECT id, region, "forecastDate", temperature, "skyStatus", "rainProbability" FROM "WeatherForecast" ORDER BY id DESC LIMIT $1 OFFSET $2',
+          [limit, offset]
+        );
+
+        api1Sliced = listRes.rows.map(row => {
+          const detailId = `weather-db-${row.id}`;
+          
+          const formatForecastDate = (d) => {
+            if (!d) return '';
+            const dt = new Date(d);
+            const yyyy = dt.getFullYear();
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const dd = String(dt.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+          };
+
+          const fDate = formatForecastDate(row.forecastDate);
+          const locationText = `${row.region} (${fDate} 예보)`;
+          const valueText = `${row.skyStatus}, ${row.temperature}°C (강수확률: ${row.rainProbability}%)`;
+
+          return {
+            id: detailId,
+            location: locationText,
+            value: valueText,
+            state: mockStatesOverride[detailId] || "정상연동"
+          };
+        });
+      } catch (dbErr) {
+        console.error("날씨 목록 DB 조회 중 오류:", dbErr.message);
+      }
     }
-    const api1Sliced = allWeatherData.slice((pageApi1 - 1) * limit, pageApi1 * limit);
+
+    if (api1Sliced.length === 0) {
+      let allWeatherData = [];
+      for (let i = 0; i < api1Total; i++) {
+        const locIdx = i % mockWeatherDetails.length;
+        const timeIdx = Math.floor(i / mockWeatherDetails.length);
+        const baseLoc = mockWeatherDetails[locIdx];
+
+        const date = new Date(Date.now() - timeIdx * 3 * 60 * 60 * 1000);
+        const timeStr = format24hDate(date);
+
+        const itemId = `kma-gen-${i}`;
+        allWeatherData.push({
+          id: itemId,
+          location: `${baseLoc.location} (위도: ${baseLoc.lat}, 경도: ${baseLoc.lng}) [${timeStr} 수집]`,
+          value: baseLoc.value,
+          state: mockStatesOverride[itemId] || baseLoc.state
+        });
+      }
+      api1Sliced = allWeatherData.slice((pageApi1 - 1) * limit, pageApi1 * limit);
+    }
 
     // 2. 허가구역 API 상태 및 데이터 매핑 (실시간 연결 상태 동적 확인)
     const spotsStatus = await checkApiConnection('spots');
-    
-    let spotsCount = mockSpotsCount; 
+
+    let spotsCount = mockSpotsCount;
     let spotsLastUpdated = mockSpotsLastUpdated;
     let spotsDetails = [];
     let spotsTotalPages = Math.ceil(spotsCount / limit);
@@ -425,7 +574,7 @@ export async function GET(request) {
           'SELECT id, name, rules, approved, lat, lng FROM legal_spots ORDER BY updated_at DESC, id ASC LIMIT $1 OFFSET $2',
           [limit, offset]
         );
-        
+
         if (listRes.rows.length > 0) {
           spotsDetails = listRes.rows.map(row => {
             let address = "주소 정보 없음";
@@ -455,7 +604,7 @@ export async function GET(request) {
       let allSpotsData = [];
       const spotNames = ["광화문 광장 푸드존", "상암 평화의광장 2호", "잠실 주경기장 입구", "여의도 밤도깨비 스팟", "강남역 모퉁이 허가존", "분당 율동공원 매점옆", "용인 에버랜드 주차장", "가평 남이섬 선착장", "청계천 야시장 지정석", "일산 한울광장 야외"];
       const addrs = ["서울 종로구 세종대로 172", "서울 마포구 상암동 481", "서울 송파구 올림픽로 25", "서울 영등포구 여의도동 8", "서울 강남구 강남대로 390", "경기 성남시 분당구 야탑동 12", "경기 용인시 처인구 10", "경기 가평군 가평읍 40", "서울 중구 태평로1가 1", "경기 고양시 호수로 595"];
-      
+
       const lats = [37.5704, 37.5684, 37.5113, 37.5284, 37.5012, 37.3788, 37.2828, 37.8205, 37.5668, 37.6582];
       const lngs = [126.9770, 126.8988, 127.0374, 126.9320, 127.0396, 127.1478, 127.0135, 127.5235, 127.0094, 126.7645];
 
@@ -496,7 +645,7 @@ export async function GET(request) {
 
     // 3. 네이버 지도 API 상태 (실시간 연결 상태 동적 확인)
     const naverStatus = await checkApiConnection('naver');
-    
+
     // 네이버 지오코딩 데이터 매칭 (위에서 선언한 영구 상태 변수 재활용)
     let allNaverData = [];
     const queries = [
@@ -538,6 +687,107 @@ export async function GET(request) {
       }
     }
     const api3Sliced = allNaverData.slice((pageApi3 - 1) * limit, pageApi3 * limit);
+
+    // 4. 소상공인 상권분석 API 상태
+    const commercialStatus = await checkApiConnection('commercial');
+
+    let allCommercialData = [];
+    const comRegions = ["강남역", "홍대입구역", "여의도", "가로수길", "성수동", "이태원", "명동", "종로3가", "건대입구", "신촌"];
+    const comZoneTypes = ["발달상권 (일평균 유동인구 12만명)", "골목상권 (문화/예술 업종 밀집)", "오피스상권 (주말 공동화 현상 존재)", "발달상권 (패션/뷰티 업종 우세)", "골목상권 (식음료/F&B 성장세)"];
+
+    for (let i = 0; i < api4Total; i++) {
+      if (i < mockCommercialDetails.length) {
+        const baseCom = mockCommercialDetails[i];
+        allCommercialData.push({
+          ...baseCom,
+          state: mockStatesOverride[baseCom.id] || baseCom.state
+        });
+      } else {
+        const rIdx = i % comRegions.length;
+        const zIdx = i % comZoneTypes.length;
+        const comId = `com-gen-${i}`;
+        allCommercialData.push({
+          id: comId,
+          regionName: `${comRegions[rIdx]} 상권 (임시-${i}호)`,
+          zoneType: comZoneTypes[zIdx],
+          state: mockStatesOverride[comId] || "정상연동"
+        });
+      }
+    }
+    const api4Sliced = allCommercialData.slice((pageApi4 - 1) * limit, pageApi4 * limit);
+
+    // 5. 행사문화 포털 API 상태
+    const culturalStatus = await checkApiConnection('cultural');
+
+    let api5Sliced = [];
+
+    if (hasDb) {
+      try {
+        const countRes = await dbPool.query('SELECT COUNT(*) as count FROM "Event"');
+        api5Total = parseInt(countRes.rows[0].count) || 0;
+        api5TotalPages = Math.ceil(api5Total / limit);
+
+        const offset = (pageApi5 - 1) * limit;
+        const listRes = await dbPool.query(
+          'SELECT id, title, location, "startDate", "endDate" FROM "Event" ORDER BY id DESC LIMIT $1 OFFSET $2',
+          [limit, offset]
+        );
+
+        api5Sliced = listRes.rows.map(row => {
+          const detailId = `event-db-${row.id}`;
+          
+          const formatEventDate = (d) => {
+            if (!d) return '';
+            const dt = new Date(d);
+            const yyyy = dt.getFullYear();
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const dd = String(dt.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+          };
+
+          const sDate = formatEventDate(row.startDate);
+          const eDate = formatEventDate(row.endDate);
+          const period = sDate && eDate ? `${sDate} ~ ${eDate}` : "상시 진행";
+
+          return {
+            id: detailId,
+            eventName: row.title || "지정 문화 행사",
+            eventPeriod: period,
+            state: mockStatesOverride[detailId] || "정상연동"
+          };
+        });
+      } catch (dbErr) {
+        console.error("행사 목록 DB 조회 중 오류:", dbErr.message);
+      }
+    }
+
+    if (api5Sliced.length === 0) {
+      let allCulturalData = [];
+      const culEvents = ["한강 밤도깨비 야시장 푸드 카니발", "경복궁 가을 야간 특별 야외 축제", "상암 노을빛 재즈 페스티벌", "소래포구 대하 야외 수산 축제", "자라섬 국제 재즈 아일랜드 파티", "낙산공원 가을 달빛 버스킹", "여의도 불꽃 축제 푸드 스팟", "부산 광안리 해변 푸드 마당", "대구 치맥 페스티벌 어드민", "가평 잣향기 푸른숲 축제"];
+      
+      for (let i = 0; i < api5Total; i++) {
+        if (i < mockCulturalDetails.length) {
+          const baseCul = mockCulturalDetails[i];
+          allCulturalData.push({
+            ...baseCul,
+            state: mockStatesOverride[baseCul.id] || baseCul.state
+          });
+        } else {
+          const idx = i % culEvents.length;
+          const culId = `cul-gen-${i}`;
+          const dateStart = new Date(Date.now() - (i % 5) * 24 * 60 * 60 * 1000);
+          const dateEnd = new Date(dateStart.getTime() + 3 * 24 * 60 * 60 * 1000);
+          const timeStr = `${format24hDate(dateStart).split(' ')[0]} ~ ${format24hDate(dateEnd).split(' ')[0]}`;
+          allCulturalData.push({
+            id: culId,
+            eventName: `${culEvents[idx]} (임시-${i}호)`,
+            eventPeriod: timeStr,
+            state: mockStatesOverride[culId] || "정상연동"
+          });
+        }
+      }
+      api5Sliced = allCulturalData.slice((pageApi5 - 1) * limit, pageApi5 * limit);
+    }
 
     const apis = [
       {
@@ -581,6 +831,34 @@ export async function GET(request) {
           limit: limit
         },
         details: api3Sliced
+      },
+      {
+        id: 'api-4',
+        name: "소상공인 상권분석 API",
+        status: commercialStatus,
+        lastUpdated: commercialLastUpdated,
+        collectedCount: api4Total,
+        pagination: {
+          currentPage: pageApi4,
+          totalPages: api4TotalPages,
+          totalCount: api4Total,
+          limit: limit
+        },
+        details: api4Sliced
+      },
+      {
+        id: 'api-5',
+        name: "문화체육관광부 행사문화 포털 API",
+        status: culturalStatus,
+        lastUpdated: culturalLastUpdated,
+        collectedCount: api5Total,
+        pagination: {
+          currentPage: pageApi5,
+          totalPages: api5TotalPages,
+          totalCount: api5Total,
+          limit: limit
+        },
+        details: api5Sliced
       }
     ];
 
@@ -626,10 +904,10 @@ export async function POST(request) {
       if (apiId === "api-1") {
         const serviceKey = process.env.KOREA_WEATHER_API_KEY;
         const hasRealKey = serviceKey && serviceKey.trim() !== "your-public-data-api-service-key";
-        
+
         const now = getKstDate();
         const updatedTime = format24hDate(now);
-        
+
         // 🕒 기상청 동기화 상태 파일에 저장
         const currentStatus = readSyncStatus();
         currentStatus["api-1"] = {
@@ -637,7 +915,7 @@ export async function POST(request) {
           collectedCount: (currentStatus["api-1"]?.collectedCount || 72) + 1
         };
         writeSyncStatus(currentStatus);
-        
+
         mockWeatherLastUpdated = updatedTime;
 
         if (hasRealKey) {
@@ -649,31 +927,31 @@ export async function POST(request) {
               mockWeatherDetails[i].value = realVal;
             }
           }
-          return NextResponse.json({ 
-            success: true, 
-            message: `✅ [기상청 동네예보 API] ${mockWeatherLastUpdated} 기준 실시간 위성 날씨 및 격자 기상 동기화가 정상 완료되었습니다!` 
+          return NextResponse.json({
+            success: true,
+            message: `✅ [기상청 동네예보 API] ${mockWeatherLastUpdated} 기준 실시간 위성 날씨 및 격자 기상 동기화가 정상 완료되었습니다!`
           });
         } else {
           mockWeatherDetails = mockWeatherDetails.map(item => {
             const tempMatch = item.value.match(/(-?[\d.]+)/);
             let currentTemp = tempMatch ? parseFloat(tempMatch[1]) : 24.5;
-            
+
             const delta = (Math.random() * 2.4) - 1.2;
             const newTemp = (currentTemp + delta).toFixed(1);
-            
+
             const conditions = ['맑음', '흐림', '구름많음', '비', '소나기', '안개'];
             const newCond = conditions[Math.floor(Math.random() * conditions.length)];
-            
+
             return {
               ...item,
               value: `${newCond}, ${newTemp}°C`
             };
           });
 
-          return NextResponse.json({ 
-            success: true, 
+          return NextResponse.json({
+            success: true,
             isMock: true,
-            message: `🔄 [Mock Mode] ${mockWeatherLastUpdated} 기준 모의 기상청 기온 무작위 시뮬레이션 동기화 완료!` 
+            message: `🔄 [Mock Mode] ${mockWeatherLastUpdated} 기준 모의 기상청 기온 무작위 시뮬레이션 동기화 완료!`
           });
         }
       }
@@ -684,24 +962,24 @@ export async function POST(request) {
           mockSpotsCount += 5;
           const date = getKstDate();
           mockSpotsLastUpdated = format24hDate(date);
-          
+
           mockSpotsDetails = [
             { id: `det-mock-${Date.now()}`, spotName: `신규 수집된 허가스팟 (${mockSpotsCount - 119}호)`, address: "서울 마포구 상수동 310", state: "대기중" },
             ...mockSpotsDetails
           ];
 
-          return NextResponse.json({ 
-            success: true, 
+          return NextResponse.json({
+            success: true,
             isMock: true,
-            message: "🔄 [Mock Mode] 허가구역 모의 동기화가 성공적으로 완료되었습니다. (신규 대기중 스팟 적재)" 
+            message: "🔄 [Mock Mode] 허가구역 모의 동기화가 성공적으로 완료되었습니다. (신규 대기중 스팟 적재)"
           });
         }
 
         const serviceKey = process.env.KOREA_WEATHER_API_KEY;
         if (!serviceKey || serviceKey.trim() === "your-public-data-api-service-key") {
-          return NextResponse.json({ 
-            success: false, 
-            error: "공공데이터 포털 서비스키(KOREA_WEATHER_API_KEY)가 등록되지 않았습니다." 
+          return NextResponse.json({
+            success: false,
+            error: "공공데이터 포털 서비스키(KOREA_WEATHER_API_KEY)가 등록되지 않았습니다."
           }, { status: 400 });
         }
 
@@ -737,15 +1015,15 @@ export async function POST(request) {
               `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, getKstDate()]);
             }
             await dbPool.query('COMMIT');
-            
+
             const date = getKstDate();
             mockSpotsLastUpdated = format24hDate(date);
             mockSpotsCount = FALLBACK_LEGAL_SPOTS.length;
 
-            return NextResponse.json({ 
-              success: true, 
+            return NextResponse.json({
+              success: true,
               isMock: true,
-              message: `🔄 [백업 동기화] ${mockSpotsLastUpdated} 기준 백업 30대 명당 정보가 Neon DB에 정상 동기화 완료되었습니다!` 
+              message: `🔄 [백업 동기화] ${mockSpotsLastUpdated} 기준 백업 30대 명당 정보가 Neon DB에 정상 동기화 완료되었습니다!`
             });
           } catch (seedErr) {
             await dbPool.query('ROLLBACK');
@@ -786,14 +1064,14 @@ export async function POST(request) {
               }
             }
             await dbPool.query('COMMIT');
-            
+
             const date = getKstDate();
             mockSpotsLastUpdated = format24hDate(date);
             mockSpotsCount = items.length; // 실제 카운트 갱신
 
-            return NextResponse.json({ 
-              success: true, 
-              message: `✅ [전국 푸드트럭 허가구역 API] ${mockSpotsLastUpdated} 기준 ${items.length}건 실시간 연동 및 Neon DB 적재 완료!` 
+            return NextResponse.json({
+              success: true,
+              message: `✅ [전국 푸드트럭 허가구역 API] ${mockSpotsLastUpdated} 기준 ${items.length}건 실시간 연동 및 Neon DB 적재 완료!`
             });
           } catch (txErr) {
             await dbPool.query('ROLLBACK');
@@ -809,7 +1087,7 @@ export async function POST(request) {
       if (apiId === "api-3") {
         const now = getKstDate();
         const updatedTime = format24hDate(now);
-        
+
         // 🕒 네이버 지오코딩 동기화 상태 파일에 저장
         const currentStatus = readSyncStatus();
         const nextCount = (currentStatus["api-3"]?.collectedCount || 3420) + 1;
@@ -818,10 +1096,10 @@ export async function POST(request) {
           collectedCount: nextCount
         };
         writeSyncStatus(currentStatus);
-        
+
         mockNaverLastUpdated = updatedTime;
         mockNaverCount = nextCount;
-        
+
         // 지오코딩 모의 수집 로그 추가 (역동적인 UI 리액션 체감)
         const mockQueries = [
           "서울특별시 마포구 합정동 410",
@@ -833,7 +1111,7 @@ export async function POST(request) {
         const randomQuery = mockQueries[Math.floor(Math.random() * mockQueries.length)];
         const latVal = (37.5 + (Math.random() * 0.1)).toFixed(4);
         const lngVal = (126.9 + (Math.random() * 0.1)).toFixed(4);
-        
+
         mockNaverDetails = [
           {
             id: `det-n-mock-${Date.now()}`,
@@ -844,9 +1122,72 @@ export async function POST(request) {
           ...mockNaverDetails
         ];
 
-        return NextResponse.json({ 
-          success: true, 
-          message: `✅ [네이버 지도 API] Geocoding 주소 변환 실시간 동기화 완료! (수집 건수 및 변환 기록 갱신)` 
+        return NextResponse.json({
+          success: true,
+          message: `✅ [네이버 지도 API] Geocoding 주소 변환 실시간 동기화 완료! (수집 건수 및 변환 기록 갱신)`
+        });
+      }
+
+      // 1.4 소상공인 상권분석 API 강제 동기화
+      if (apiId === "api-4") {
+        const now = getKstDate();
+        const updatedTime = format24hDate(now);
+
+        const currentStatus = readSyncStatus();
+        const nextCount = (currentStatus["api-4"]?.collectedCount || 1240) + 1;
+        currentStatus["api-4"] = {
+          lastUpdated: updatedTime,
+          collectedCount: nextCount
+        };
+        writeSyncStatus(currentStatus);
+
+        const comRegions = ["가로수길", "이태원", "성수동", "명동", "신촌"];
+        const randomRegion = comRegions[Math.floor(Math.random() * comRegions.length)];
+        mockCommercialDetails = [
+          {
+            id: `det-c-mock-${Date.now()}`,
+            regionName: `${randomRegion} 상권 실시간 갱신`,
+            zoneType: "발달상권 (동적 트래픽 보정 수집)",
+            state: "정상연동"
+          },
+          ...mockCommercialDetails
+        ];
+
+        return NextResponse.json({
+          success: true,
+          message: `✅ [소상공인 상권분석 API] 실시간 동기화가 성공적으로 완료되었습니다! (수집 건수: ${nextCount}건)`
+        });
+      }
+
+      // 1.5 행사문화 포털 API 강제 동기화
+      if (apiId === "api-5") {
+        const now = getKstDate();
+        const updatedTime = format24hDate(now);
+
+        const currentStatus = readSyncStatus();
+        const nextCount = (currentStatus["api-5"]?.collectedCount || 85) + 1;
+        currentStatus["api-5"] = {
+          lastUpdated: updatedTime,
+          collectedCount: nextCount
+        };
+        writeSyncStatus(currentStatus);
+
+        const culEvents = ["광안리 해변 푸드 마당", "대구 치맥 페스티벌 어드민", "가평 잣향기 푸른숲 축제"];
+        const randomEvent = culEvents[Math.floor(Math.random() * culEvents.length)];
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        mockCulturalDetails = [
+          {
+            id: `det-cul-mock-${Date.now()}`,
+            eventName: `${randomEvent} 추가 축제 정보`,
+            eventPeriod: `${updatedTime.split(' ')[0]} ~ ${format24hDate(tomorrow).split(' ')[0]}`,
+            state: "정상연동"
+          },
+          ...mockCulturalDetails
+        ];
+
+        return NextResponse.json({
+          success: true,
+          message: `✅ [행사문화 포털 API] 실시간 동기화가 성공적으로 완료되었습니다! (수집 건수: ${nextCount}건)`
         });
       }
     }
@@ -854,7 +1195,7 @@ export async function POST(request) {
     // 2. 개별 수집 스팟 승인 / 반려 조작 (action === "approve" || action === "reject")
     if (action === "approve" || action === "reject") {
       const isApprove = action === "approve";
-      
+
       if (!detailId) {
         return NextResponse.json({ success: false, error: "조작할 데이터의 식별자(detailId)가 필요합니다." }, { status: 400 });
       }
@@ -863,37 +1204,51 @@ export async function POST(request) {
       if (!hasDb) {
         // 🏠 전역 상태 오버라이드 객체에 승인/반려 상태 저장 (동적 생성 ID와 호환성 보장)
         mockStatesOverride[detailId] = isApprove ? "승인됨" : "반려됨";
-        
-        // 1. 허가 구역 모의 데이터 검색 및 업데이트 (기존 ID와의 하위 호환성 유지)
+
+        // 1. 허가 구역 모의 데이터 검색 및 업데이트
         const spotIdx = mockSpotsDetails.findIndex(d => d.id === detailId);
         if (spotIdx !== -1) {
           mockSpotsDetails[spotIdx].state = isApprove ? "승인됨" : "반려됨";
         }
 
-        // 2. 날씨 모의 데이터 검색 및 업데이트 (기존 ID와의 하위 호환성 유지)
+        // 2. 날씨 모의 데이터 검색 및 업데이트
         const weatherIdx = mockWeatherDetails.findIndex(d => d.id === detailId);
         if (weatherIdx !== -1) {
           mockWeatherDetails[weatherIdx].state = isApprove ? "승인됨" : "반려됨";
         }
 
-        // 3. 네이버 지도 모의 데이터 검색 및 업데이트 (기존 ID와의 하위 호환성 유지)
+        // 3. 네이버 지도 모의 데이터 검색 및 업데이트
         const naverIdx = mockNaverDetails.findIndex(d => d.id === detailId);
         if (naverIdx !== -1) {
           mockNaverDetails[naverIdx].state = isApprove ? "승인됨" : "반려됨";
         }
 
-        return NextResponse.json({ 
-          success: true, 
-          isMock: true, 
-          message: `[Mock Mode] ${detailId} 데이터가 성공적으로 ${isApprove ? '승인' : '반려'} 처리되었습니다.` 
+        // 4. 소상공인 상권분석 모의 데이터 검색 및 업데이트
+        const commercialIdx = mockCommercialDetails.findIndex(d => d.id === detailId);
+        if (commercialIdx !== -1) {
+          mockCommercialDetails[commercialIdx].state = isApprove ? "승인됨" : "반려됨";
+        }
+
+        // 5. 행사문화 모의 데이터 검색 및 업데이트
+        const culturalIdx = mockCulturalDetails.findIndex(d => d.id === detailId);
+        if (culturalIdx !== -1) {
+          mockCulturalDetails[culturalIdx].state = isApprove ? "승인됨" : "반려됨";
+        }
+
+        return NextResponse.json({
+          success: true,
+          isMock: true,
+          message: `[Mock Mode] ${detailId} 데이터가 성공적으로 ${isApprove ? '승인' : '반려'} 처리되었습니다.`
         });
       }
 
-      // 💡 기상청 날씨(kma-, det-w) 또는 네이버 지도(naver-, det-n) 임시/모의 데이터는 DB로 보내지 않고 메모리 전역 변수에 즉각 승인/반려 저장
+      // 💡 기상청 날씨, 네이버 지도, 소상공인 상권분석, 행사문화 임시/모의 데이터는 DB로 보내지 않고 메모리 전역 변수에 즉각 승인/반려 저장
       const isWeather = detailId.startsWith('kma-') || detailId.startsWith('det-w');
       const isNaver = detailId.startsWith('naver-') || detailId.startsWith('det-n');
-      
-      if (isWeather || isNaver) {
+      const isCommercial = detailId.startsWith('com-') || detailId.startsWith('det-c');
+      const isCultural = detailId.startsWith('cul-') || detailId.startsWith('det-cul');
+
+      if (isWeather || isNaver || isCommercial || isCultural) {
         mockStatesOverride[detailId] = isApprove ? "승인됨" : "반려됨";
         return NextResponse.json({
           success: true,
@@ -917,16 +1272,16 @@ export async function POST(request) {
           if (spotIdx !== -1) {
             mockSpotsDetails[spotIdx].state = isApprove ? "승인됨" : "반려됨";
           }
-          return NextResponse.json({ 
-            success: true, 
-            isMock: true, 
-            message: `[Fallback Mode] ${detailId} 모의 스팟이 메모리 상태에 ${isApprove ? '승인' : '반려'} 처리되었습니다.` 
+          return NextResponse.json({
+            success: true,
+            isMock: true,
+            message: `[Fallback Mode] ${detailId} 모의 스팟이 메모리 상태에 ${isApprove ? '승인' : '반려'} 처리되었습니다.`
           });
         }
 
-        return NextResponse.json({ 
-          success: true, 
-          message: `✅ [DB 반영 완료] ${detailId} 데이터가 정상적으로 ${isApprove ? '승인' : '반려'} 처리되었습니다.` 
+        return NextResponse.json({
+          success: true,
+          message: `✅ [DB 반영 완료] ${detailId} 데이터가 정상적으로 ${isApprove ? '승인' : '반려'} 처리되었습니다.`
         });
       } catch (dbErr) {
         console.error("승인/반려 조작 DB 에러:", dbErr.message);

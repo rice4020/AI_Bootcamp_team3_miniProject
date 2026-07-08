@@ -1,10 +1,18 @@
 {
   "api-1": {
-    "lastUpdated": "2026-07-07 17:51",
-    "collectedCount": 75
+    "lastUpdated": "2026-07-08 15:03",
+    "collectedCount": 85
   },
   "api-3": {
-    "lastUpdated": "2026-07-07 18:13",
-    "collectedCount": 3423
+    "lastUpdated": "2026-07-08 11:29",
+    "collectedCount": 3425
+  },
+  "api-5": {
+    "lastUpdated": "2026-07-08 14:19",
+    "collectedCount": 86
+  },
+  "api-4": {
+    "lastUpdated": "2026-07-08 14:19",
+    "collectedCount": 1242
   }
 }
