@@ -226,10 +226,13 @@ export async function GET(request) {
         `;
       }
 
+      // 💡 선택 지역 날씨 정보가 없거나, 초기 로딩 시 기본적으로 '수도권 권역' 기준으로 날씨 표시
       if (!weather || weather.length === 0) {
+        const defaultRegion = regionParam || '수도권 권역';
         weather = await sql`
           SELECT "id", "region", "forecastDate", "temperature", "skyStatus", "rainProbability"
           FROM "WeatherForecast"
+          WHERE "region" = ${defaultRegion}
           ORDER BY "forecastDate" ASC
           LIMIT 7
         `;
@@ -241,18 +244,20 @@ export async function GET(request) {
         const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const afterTomorrowStr = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+        const targetRegion = regionParam || '수도권 권역';
         await sql`
           INSERT INTO "WeatherForecast" ("region", "forecastDate", "temperature", "skyStatus", "rainProbability")
           VALUES 
-            ('수도권 권역', ${todayStr}::date, 28.0, '맑음 ☀️', 10),
-            ('수도권 권역', ${tomorrowStr}::date, 26.0, '흐림 ☁️', 30),
-            ('수도권 권역', ${afterTomorrowStr}::date, 24.0, '비 🌧️', 80)
+            (${targetRegion}, ${todayStr}::date, 28.0, '맑음 ☀️', 10),
+            (${targetRegion}, ${tomorrowStr}::date, 26.0, '흐림 ☁️', 30),
+            (${targetRegion}, ${afterTomorrowStr}::date, 24.0, '비 🌧️', 80)
           ON CONFLICT DO NOTHING
         `;
 
         weather = await sql`
           SELECT "id", "region", "forecastDate", "temperature", "skyStatus", "rainProbability"
           FROM "WeatherForecast"
+          WHERE "region" = ${targetRegion}
           ORDER BY "forecastDate" ASC
           LIMIT 7
         `;
