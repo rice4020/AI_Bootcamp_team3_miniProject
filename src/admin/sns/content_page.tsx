@@ -12,6 +12,8 @@ export default function AdminContentPage() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('event'); // 'event' or 'sns'
 
   // 데이터 리스트 State
   const [events, setEvents] = useState([]);
@@ -37,12 +39,18 @@ export default function AdminContentPage() {
   const [eventLocation, setEventLocation] = useState('');
 
   // 1. 데이터 조회 함수 (Neon DB 연동 API 호출, 검색 및 좌표기반 기상동기화 지원)
-  const fetchContentData = async (query = '', lat = '', lng = '', region = '') => {
+  const fetchContentData = async (query = '', lat = '', lng = '', region = '', isWeatherOnly = false, tabParam = activeTab) => {
+    if (isWeatherOnly) {
+      setWeatherLoading(true);
+    } else {
+      setLoading(true);
+    }
     try {
       let url = '/api/admin/content';
       const params = new URLSearchParams();
       
       if (query.trim()) params.append('q', query.trim());
+      params.append('tab', tabParam);
       if (lat && lng && region) {
         params.append('lat', lat.toString());
         params.append('lng', lng.toString());
@@ -74,6 +82,7 @@ export default function AdminContentPage() {
       console.error('Fetch Error:', err);
     } finally {
       setLoading(false);
+      setWeatherLoading(false);
     }
   };
 
@@ -138,13 +147,14 @@ export default function AdminContentPage() {
           startDate: eventStartDate,
           endDate: eventEndDate,
           scale: eventScale || '미지정',
-          description: isEdit ? selectedEvent.description : ''
+          description: isEdit ? selectedEvent.description : '',
+          tab: activeTab
         })
       });
 
       const result = await response.json();
       if (result.success) {
-        alert(isEdit ? "📝 행사 정보가 성공적으로 수정되었습니다." : "🎪 새로운 문화 행사가 성공적으로 등록되었습니다.");
+        alert(isEdit ? "📝 정보가 성공적으로 수정되었습니다." : "🎪 성공적으로 등록되었습니다.");
         // 폼 초기화 및 수정 모드 클리어
         handleCancelEdit();
         setIsModalOpen(false);
@@ -183,16 +193,16 @@ export default function AdminContentPage() {
 
   // 4. 행사 삭제 요청 (DELETE)
   const handleDeleteEvent = async (id) => {
-    if (!confirm("정말 이 행사를 시스템에서 제거하시겠습니까?")) return;
-
+    if (!confirm("정말 이 데이터를 시스템에서 제거하시겠습니까?")) return;
+ 
     try {
-      const response = await fetch(`/api/admin/content?id=${id}`, {
+      const response = await fetch(`/api/admin/content?id=${id}&tab=${activeTab}`, {
         method: 'DELETE'
       });
       const result = await response.json();
-
+ 
       if (result.success) {
-        alert("🗑️ 행사가 정상 삭제되었습니다.");
+        alert("🗑️ 정상 삭제되었습니다.");
         fetchContentData();
       } else {
         alert(`❌ 삭제 실패: ${result.error}`);
@@ -234,9 +244,49 @@ export default function AdminContentPage() {
             
             {/* 📋 좌측: 문화 행사 정보 관리 */}
             <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {/* 🔄 [토글 탭 스위치] 문화행사 DB ↔ SNS 블로그 추출 DB */}
+              <div style={{ display: 'flex', gap: '8px', background: 'var(--surface-light)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)', marginBottom: '8px' }}>
+                <button 
+                  type="button"
+                  onClick={() => { setActiveTab('event'); fetchContentData(searchQuery, '', '', '', false, 'event'); }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    borderRadius: '8px',
+                    background: activeTab === 'event' ? 'var(--primary)' : 'transparent',
+                    color: activeTab === 'event' ? '#ffffff' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🎡 문화 행사 DB
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setActiveTab('sns'); fetchContentData(searchQuery, '', '', '', false, 'sns'); }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    borderRadius: '8px',
+                    background: activeTab === 'sns' ? 'var(--primary)' : 'transparent',
+                    color: activeTab === 'sns' ? '#ffffff' : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  📱 SNS 블로그 추출 DB
+                </button>
+              </div>
+ 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
-                  🎡 문화 행사 정보 목록
+                  {activeTab === 'sns' ? '📱 SNS 블로그 추출 목록' : '🎡 문화 행사 정보 목록'}
                 </h3>
                 <Button 
                   type="button" 
@@ -244,7 +294,7 @@ export default function AdminContentPage() {
                   onClick={() => { handleCancelEdit(); setIsModalOpen(true); }}
                   style={{ padding: '8px 16px', fontSize: '0.8rem' }}
                 >
-                  + 신규 행사 등록
+                  {activeTab === 'sns' ? '+ 신규 데이터 등록' : '+ 신규 행사 등록'}
                 </Button>
               </div>
 
@@ -518,7 +568,7 @@ export default function AdminContentPage() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
-                    {selectedEvent ? '✏️ 행사 정보 수정' : '🎪 신규 행사 수동 등록'}
+                    {selectedEvent ? `✏️ ${activeTab === 'sns' ? 'SNS 추출 데이터' : '행사 정보'} 수정` : (activeTab === 'sns' ? '📱 신규 블로그 데이터 수동 등록' : '🎪 신규 행사 수동 등록')}
                   </h3>
                   <button 
                     onClick={handleCancelEdit} 

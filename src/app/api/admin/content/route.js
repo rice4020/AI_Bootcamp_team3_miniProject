@@ -185,22 +185,41 @@ export async function GET(request) {
     const lngParam = searchParams.get('lng');
     const regionParam = searchParams.get('region');
 
+    const tab = searchParams.get('tab') || 'event';
+
     // 검색 키워드가 있으면 title/location ILIKE 필터링, 없으면 전체 조회
     let events;
     if (query.trim()) {
       const searchPattern = `%${query.trim()}%`;
-      events = await sql`
-        SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
-        FROM "Event"
-        WHERE "title" ILIKE ${searchPattern} OR "location" ILIKE ${searchPattern}
-        ORDER BY "startDate" ASC
-      `;
+      if (tab === 'sns') {
+        events = await sql`
+          SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
+          FROM "SnsExtraction"
+          WHERE "title" ILIKE ${searchPattern} OR "location" ILIKE ${searchPattern}
+          ORDER BY "startDate" ASC
+        `;
+      } else {
+        events = await sql`
+          SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
+          FROM "Event"
+          WHERE "title" ILIKE ${searchPattern} OR "location" ILIKE ${searchPattern}
+          ORDER BY "startDate" ASC
+        `;
+      }
     } else {
-      events = await sql`
-        SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
-        FROM "Event"
-        ORDER BY "startDate" ASC
-      `;
+      if (tab === 'sns') {
+        events = await sql`
+          SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
+          FROM "SnsExtraction"
+          ORDER BY "startDate" ASC
+        `;
+      } else {
+        events = await sql`
+          SELECT "id", "title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description"
+          FROM "Event"
+          ORDER BY "startDate" ASC
+        `;
+      }
     }
 
     // 📍 좌표 쿼리 매개변수가 들어오면, 기상청 API 연동을 통해 동적으로 DB 캐시를 갱신
@@ -305,24 +324,32 @@ export async function GET(request) {
   }
 }
 
-// 2. 신규 행사 등록 (POST)
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { title, location, startDate, endDate, scale, description } = body;
-
+    const { title, location, startDate, endDate, scale, description, tab } = body;
+ 
     if (!title || !location || !startDate || !endDate) {
       return NextResponse.json({ success: false, error: '필수 필드가 누락되었습니다.' }, { status: 400 });
     }
-
+ 
     const { lat, lng, formatted } = parseLocationToCoords(location);
-
-    const result = await sql`
-      INSERT INTO "Event" ("title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description")
-      VALUES (${title}, ${formatted}, ${startDate}, ${endDate}, ${scale || '미지정'}, ${lat}, ${lng}, ${description || ''})
-      RETURNING "id"
-    `;
-
+ 
+    let result;
+    if (tab === 'sns') {
+      result = await sql`
+        INSERT INTO "SnsExtraction" ("title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description")
+        VALUES (${title}, ${formatted}, ${startDate}, ${endDate}, ${scale || '미지정'}, ${lat}, ${lng}, ${description || ''})
+        RETURNING "id"
+      `;
+    } else {
+      result = await sql`
+        INSERT INTO "Event" ("title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description")
+        VALUES (${title}, ${formatted}, ${startDate}, ${endDate}, ${scale || '미지정'}, ${lat}, ${lng}, ${description || ''})
+        RETURNING "id"
+      `;
+    }
+ 
     return NextResponse.json({ success: true, id: result[0].id });
   } catch (err) {
     console.error('❌ [Admin Content API POST Error]:', err.message);
@@ -335,16 +362,24 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-
+    const tab = searchParams.get('tab') || 'event';
+ 
     if (!id) {
       return NextResponse.json({ success: false, error: '삭제할 행사 ID가 필요합니다.' }, { status: 400 });
     }
-
-    await sql`
-      DELETE FROM "Event"
-      WHERE "id" = ${parseInt(id)}
-    `;
-
+ 
+    if (tab === 'sns') {
+      await sql`
+        DELETE FROM "SnsExtraction"
+        WHERE "id" = ${parseInt(id)}
+      `;
+    } else {
+      await sql`
+        DELETE FROM "Event"
+        WHERE "id" = ${parseInt(id)}
+      `;
+    }
+ 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('❌ [Admin Content API DELETE Error]:', err.message);
@@ -356,26 +391,38 @@ export async function DELETE(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { id, title, location, startDate, endDate, scale } = body;
-
+    const { id, title, location, startDate, endDate, scale, tab } = body;
+ 
     if (!id || !title || !location || !startDate || !endDate) {
       return NextResponse.json({ success: false, error: '필수 필드가 누락되었습니다.' }, { status: 400 });
     }
-
+ 
     const { lat, lng, formatted } = parseLocationToCoords(location);
-
-    await sql`
-      UPDATE "Event"
-      SET "title" = ${title},
-          "location" = ${formatted},
-          "startDate" = ${startDate}::date,
-          "endDate" = ${endDate}::date,
-          "scale" = ${scale || '미지정'},
-          "latitude" = ${lat},
-          "longitude" = ${lng}
-      WHERE "id" = ${parseInt(id)}
-    `;
-
+ 
+    if (tab === 'sns') {
+      await sql`
+        UPDATE "SnsExtraction"
+        SET "title" = ${title},
+            "location" = ${formatted},
+            "startDate" = ${startDate}::date,
+            "endDate" = ${endDate}::date,
+            "scale" = ${scale || '미지정'}
+        WHERE "id" = ${parseInt(id)}
+      `;
+    } else {
+      await sql`
+        UPDATE "Event"
+        SET "title" = ${title},
+            "location" = ${formatted},
+            "startDate" = ${startDate}::date,
+            "endDate" = ${endDate}::date,
+            "scale" = ${scale || '미지정'},
+            "latitude" = ${lat},
+            "longitude" = ${lng}
+        WHERE "id" = ${parseInt(id)}
+      `;
+    }
+ 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('❌ [Admin Content API PUT Error]:', err.message);
