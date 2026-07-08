@@ -82,6 +82,7 @@ export default function UserMainPage() {
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
   const [isMapError, setIsMapError] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [searchedLocation, setSearchedLocation] = useState(null);
 
   // 📡 실시간 연동 리스트 State
   const [trucksList, setTrucksList] = useState([]);
@@ -110,42 +111,71 @@ export default function UserMainPage() {
 
   const apiKey = process.env.NEXT_PUBLIC_NAVER_MAP_KEY; // 네이버 지도 Client ID
 
-  // 🔍 [김유환 추가] 동네/주소 검색 실행 (네이버 Geocoder 서브모듈 호출)
-  const handleSearchAddress = () => {
+  // 🔍 [김유환 추가] 동네/주소 검색 실행 (네이버 / OSM Fallback 분기)
+  const handleSearchAddress = async () => {
     if (!searchQuery.trim()) {
       alert('검색할 주소를 입력해 주세요!');
       return;
     }
 
-    if (!window.naver || !window.naver.maps || !window.naver.maps.Service) {
-      alert('네이버 지도 서비스가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.');
-      return;
+    let lat = null;
+    let lng = null;
+    let displayName = searchQuery;
+
+    // OSM Nominatim API 호출 (네이버 API 실패 시 Fallback)
+    const tryOsmSearch = async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        
+        if (data && data.length > 0) {
+          lat = parseFloat(data[0].lat);
+          lng = parseFloat(data[0].lon);
+          displayName = data[0].display_name;
+          finishSearch(lat, lng, displayName);
+        } else {
+          alert('검색 결과가 없거나 주소 변환에 실패했습니다. (오픈스트리트맵 검색 실패)');
+        }
+      } catch (err) {
+        console.error('OSM Search Error:', err);
+        alert('주소 검색 중 오류가 발생했습니다.');
+      }
+    };
+
+    if (window.naver && window.naver.maps && window.naver.maps.Service && !isMapError) {
+      window.naver.maps.Service.geocode({ query: searchQuery }, (status, response) => {
+        if (status !== window.naver.maps.Service.Status.OK) {
+          // 네이버 검색 결과가 없으면 OSM으로 다시 시도
+          tryOsmSearch();
+          return;
+        }
+        const result = response.v2;
+        if (result.addresses.length === 0) {
+          tryOsmSearch();
+          return;
+        }
+        const addressItem = result.addresses[0];
+        lat = parseFloat(addressItem.y);
+        lng = parseFloat(addressItem.x);
+        displayName = addressItem.roadAddress || addressItem.jibunAddress || searchQuery;
+        finishSearch(lat, lng, displayName);
+      });
+    } else {
+      tryOsmSearch();
     }
 
-    window.naver.maps.Service.geocode({
-      query: searchQuery
-    }, (status, response) => {
-      if (status !== window.naver.maps.Service.Status.OK) {
-        alert('검색 결과가 없거나 주소 변환에 실패했습니다.');
-        return;
+    function finishSearch(finalLat, finalLng, finalName) {
+      alert(`'${searchQuery}'(으)로 지도를 이동합니다!\\n(이동된 위치: ${finalName})`);
+      setMyLocation({ lat: finalLat, lng: finalLng });
+      setSearchedLocation({ lat: finalLat, lng: finalLng, displayName: finalName });
+      
+      if (naverMapInstanceRef.current && window.naver) {
+        naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(finalLat, finalLng));
       }
-
-      const result = response.v2;
-      if (result.addresses.length === 0) {
-        alert('해당하는 동네 주소를 찾을 수 없습니다.');
-        return;
+      if (leafletMapInstanceRef.current && window.L) {
+        leafletMapInstanceRef.current.setView([finalLat, finalLng], 14);
       }
-
-      const addressItem = result.addresses[0];
-      const lat = parseFloat(addressItem.y);
-      const lng = parseFloat(addressItem.x);
-
-      setMyLocation({ lat, lng });
-      if (naverMapInstanceRef.current) {
-        naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(lat, lng));
-      }
-      alert(`📍 지도가 [${addressItem.roadAddress || addressItem.jibunAddress}] (으)로 이동되었습니다.`);
-    });
+    }
   };
 
   // 🌤️ 내 위치 기반 기상청 실시간 날씨 갱신 훅
@@ -552,6 +582,60 @@ export default function UserMainPage() {
     });
     overlaysRef.current.push(myLocMarker);
 
+    // [검색 목적지 마커 그리기]
+    if (searchedLocation) {
+      const searchMarkerHtml = `
+        <div style="
+          position: relative;
+          width: 24px;
+          height: 24px;
+          background: #3498db;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+          border: 2px solid #FFFFFF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <div style="width: 8px; height: 8px; background: #FFFFFF; border-radius: 50%;"></div>
+          
+          <div style="
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%) rotate(45deg);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #2c3e50;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          ">
+            <span>📍</span>
+            <span>${searchedLocation.displayName.split(' ')[0]}</span>
+          </div>
+        </div>
+      `;
+
+      const searchMarker = new window.naver.maps.Marker({
+        position: new window.naver.maps.LatLng(searchedLocation.lat, searchedLocation.lng),
+        map: naverMapInstanceRef.current,
+        icon: {
+          content: searchMarkerHtml,
+          size: new window.naver.maps.Size(24, 24),
+          anchor: new window.naver.maps.Point(12, 24)
+        }
+      });
+      overlaysRef.current.push(searchMarker);
+    }
+
     // B. 푸드트럭 마커 그리기
     filteredTrucks.forEach(truck => {
       // 영업 상태에 따른 테두리 색상 결정
@@ -738,91 +822,116 @@ export default function UserMainPage() {
       {/* 네비게이션 헤더 */}
       <Navbar userType="user" />
 
-      {/* 🔍 [김유환 추가] 동네 / 주소 검색 바 */}
-      <div style={{
-        padding: '12px 16px',
-        background: '#FFFFFF',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        gap: '8px',
-        alignItems: 'center',
-        zIndex: 51,
-      }}>
-        <input
-          type="text"
-          placeholder="동네 이름 또는 도로명 주소를 입력하세요 (예: 서초동, 여의도)"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSearchAddress();
-          }}
-          style={{
-            flex: 1,
-            padding: '12px 14px',
-            borderRadius: '12px',
-            border: '1px solid var(--border)',
-            background: 'rgba(0, 0, 0, 0.02)',
-            fontSize: '0.9rem',
-            outline: 'none'
-          }}
-        />
-        <button
-          onClick={handleSearchAddress}
-          style={{
-            padding: '12px 18px',
-            borderRadius: '12px',
-            background: 'var(--primary)',
-            color: '#FFFFFF',
-            border: 'none',
-            fontWeight: '600',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-neon)'
-          }}
-        >
-          🔍 검색
-        </button>
-      </div>
-
-      {/* 카테고리 필터링 가로 바 */}
-      <div style={{
-        padding: '12px 16px',
-        background: 'rgba(255, 255, 255, 0.85)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        gap: '8px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        zIndex: 50,
-      }}>
-        {categoriesList.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '20px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              transition: 'all 0.2s',
-              border: '1px solid',
-              borderColor: selectedCategory === cat.id ? 'var(--primary)' : 'var(--border)',
-              background: selectedCategory === cat.id ? 'var(--primary)' : '#FFFFFF',
-              color: selectedCategory === cat.id ? '#FFF' : 'var(--text-secondary)',
-              boxShadow: selectedCategory === cat.id ? 'var(--shadow-neon)' : 'var(--shadow-sm)'
-            }}
-          >
-            {cat.label}
-          </button>
-        ))}
-      </div>
-
-      {/* 메인 맵 영역 */}
-      <div style={{ flex: 1, position: 'relative', background: '#FAFAFC' }}>
+      {/* 2단 레이아웃 컨테이너 */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column-reverse' : 'row', overflow: 'hidden' }}>
         
-        {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
-        <div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
+        {/* 🗺️ 좌측 LNB 패널 */}
+        <div style={{
+          width: isMobile ? '100%' : '340px',
+          height: isMobile ? '240px' : '100%',
+          background: '#FFFFFF',
+          borderRight: isMobile ? 'none' : '1px solid var(--border)',
+          borderTop: isMobile ? '1px solid var(--border)' : 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 10,
+          boxShadow: 'var(--shadow-lg)'
+        }}>
+          {/* LNB 타이틀 */}
+          <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-light)' }}>
+            <h5 style={{ margin: 0, fontWeight: '800', fontSize: '0.9rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              🎯 주변 지역 탐색
+            </h5>
+          </div>
+
+          {/* 🔍 동네 / 주소 검색 바 (좌측 LNB로 이동) */}
+          <div style={{
+            padding: '12px 16px',
+            background: '#FFFFFF',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+          }}>
+            <input
+              type="text"
+              placeholder="동네 이름 또는 도로명 검색"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearchAddress();
+              }}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'rgba(0, 0, 0, 0.02)',
+                fontSize: '0.85rem',
+                outline: 'none'
+              }}
+            />
+            <button
+              onClick={handleSearchAddress}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--primary)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontWeight: '600',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              🔍
+            </button>
+          </div>
+
+          <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>지도에서 반경을 선택하거나 우측 칩을 눌러 카테고리를 골라보세요!</p>
+          </div>
+        </div>
+
+        {/* 🗺️ 우측 메인 맵 및 카테고리 영역 */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', background: '#FAFAFC' }}>
+          
+          {/* 카테고리 필터링 가로 바 */}
+          <div style={{
+            padding: '12px 16px',
+            background: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            gap: '8px',
+            overflowX: 'auto',
+            whiteSpace: 'nowrap',
+            zIndex: 50,
+          }}>
+            {categoriesList.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s',
+                  border: '1px solid',
+                  borderColor: selectedCategory === cat.id ? 'var(--primary)' : 'var(--border)',
+                  background: selectedCategory === cat.id ? 'var(--primary)' : '#FFFFFF',
+                  color: selectedCategory === cat.id ? '#FFF' : 'var(--text-secondary)',
+                  boxShadow: selectedCategory === cat.id ? 'var(--shadow-neon)' : 'var(--shadow-sm)'
+                }}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 맵 엘리먼트 (네이버/Leaflet 공용 사용) */}
+          <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, bottom: 0, right: 0, zIndex: 1 }} />
 
         {/* 🌤️ 내 주변 실시간 기상 날씨 칩 */}
         {weatherData && (
@@ -1223,6 +1332,7 @@ export default function UserMainPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* 팝업 슬라이드업 애니메이션 */}
       <style>{`

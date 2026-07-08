@@ -170,7 +170,7 @@ export async function GET() {
       ORDER BY id ASC
     `);
 
-    const formatted = dbSpots.rows.map(row => ({
+    let formatted = dbSpots.rows.map(row => ({
       id: row.id,
       name: row.name,
       address: row.address,
@@ -179,6 +179,16 @@ export async function GET() {
       description: row.rules,
       isApartment: row.rules?.includes("⚠️ 관리사무소") || row.rules?.includes("아파트") || false
     }));
+
+    // [중복 제거] 공공데이터 포털에서 동일한 장소(동일한 이름)가 다수 내려오는 현상 방지
+    const uniqueSpotsMap = new Map();
+    formatted.forEach(spot => {
+      // 이름을 키로 사용하여 중복 발생 시 첫 번째 것만 유지
+      if (!uniqueSpotsMap.has(spot.name)) {
+        uniqueSpotsMap.set(spot.name, spot);
+      }
+    });
+    formatted = Array.from(uniqueSpotsMap.values());
 
     // 만약 여전히 통신실패 등으로 DB 개수가 10개 미만일 때 최후의 보루로 로컬 검증 백업본 병합 가동
     if (formatted.length < 10) {
