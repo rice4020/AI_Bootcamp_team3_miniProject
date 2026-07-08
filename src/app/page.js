@@ -937,7 +937,7 @@ export default function UserMainPage() {
         {weatherData && (
           <div style={{
             position: 'absolute',
-            top: '16px',
+            top: '72px',
             left: '16px',
             zIndex: 99,
             background: 'rgba(255, 255, 255, 0.95)',
