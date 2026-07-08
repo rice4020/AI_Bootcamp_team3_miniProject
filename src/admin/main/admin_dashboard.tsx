@@ -11,6 +11,21 @@ interface StatsState {
   activeTrucks: number;
   totalTrucks: number;
   suspendedUsers: number;
+  // 신동원님 연동 API 집계 추가 속성
+  total?: number;
+  approved?: number;
+  rejected?: number;
+  pending?: number;
+  weather?: string;
+  naverTotal?: number;
+  weatherTotal?: number;
+  weatherStatus?: string;
+  spotsStatus?: string;
+  naverStatus?: string;
+  commercialTotal?: number;
+  commercialStatus?: string;
+  culturalTotal?: number;
+  culturalStatus?: string;
 }
 
 export default function AdminDashboardPage() {
@@ -23,6 +38,16 @@ export default function AdminDashboardPage() {
     activeTrucks: 0,
     totalTrucks: 0,
     suspendedUsers: 0,
+    total: 0,
+    naverTotal: 0,
+    weatherTotal: 0,
+    weatherStatus: 'active',
+    spotsStatus: 'active',
+    naverStatus: 'active',
+    commercialTotal: 0,
+    commercialStatus: 'active',
+    culturalTotal: 0,
+    culturalStatus: 'active'
   });
 
   // 📡 상세 목록 팝업 상태 정의
@@ -45,19 +70,50 @@ export default function AdminDashboardPage() {
     const savedProvider = localStorage.getItem('roadfood_map_provider') || 'naver';
     setMapProvider(savedProvider);
 
-    // 📡 실시간 Neon DB 통계 데이터 페치 실행
+    // 📡 실시간 Neon DB 통계 및 외부 API 소모율 병렬 페치 실행
     const fetchDbStats = async () => {
       try {
-        const response = await fetch('/api/admin/stats');
-        const result = await response.json();
-        if (result.success) {
-          setStats({
-            totalUsers: result.totalUsers || 0,
-            activeTrucks: result.activeTrucks || 0,
-            totalTrucks: result.totalTrucks || 0,
-            suspendedUsers: result.suspendedUsers || 0
-          });
+        const [statsRes, apisRes] = await Promise.all([
+          fetch('/api/admin/stats').then(r => r.json()),
+          fetch('/api/admin/apis?type=dashboard').then(r => r.json()).catch(() => ({ success: false }))
+        ]);
+
+        let mergedStats: StatsState = {
+          totalUsers: 0,
+          activeTrucks: 0,
+          totalTrucks: 0,
+          suspendedUsers: 0
+        };
+
+        if (statsRes.success) {
+          mergedStats.totalUsers = statsRes.totalUsers || 0;
+          mergedStats.activeTrucks = statsRes.activeTrucks || 0;
+          mergedStats.totalTrucks = statsRes.totalTrucks || 0;
+          mergedStats.suspendedUsers = statsRes.suspendedUsers || 0;
         }
+
+        if (apisRes.success && apisRes.stats) {
+          const apiStats = apisRes.stats;
+          mergedStats = {
+            ...mergedStats,
+            total: apiStats.total || 0,
+            approved: apiStats.approved || 0,
+            rejected: apiStats.rejected || 0,
+            pending: apiStats.pending || 0,
+            weather: apiStats.weather || '',
+            naverTotal: apiStats.naverTotal || 0,
+            weatherTotal: apiStats.weatherTotal || 0,
+            weatherStatus: apiStats.weatherStatus || 'active',
+            spotsStatus: apiStats.spotsStatus || 'active',
+            naverStatus: apiStats.naverStatus || 'active',
+            commercialTotal: apiStats.commercialTotal || 0,
+            commercialStatus: apiStats.commercialStatus || 'active',
+            culturalTotal: apiStats.culturalTotal || 0,
+            culturalStatus: apiStats.culturalStatus || 'active'
+          };
+        }
+
+        setStats(mergedStats);
       } catch (err) {
         console.error('Failed to load dashboard statistics from Neon DB:', err);
       }
@@ -253,6 +309,184 @@ export default function AdminDashboardPage() {
             </div>
 
           </div>
+
+          {/* 🔌 5대 외부 연동 API 현황 (신동원님 기능 이식 및 스타일 융합) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)', borderLeft: '4px solid #0984e3', paddingLeft: '10px' }}>
+              🔌 연동 API 요약 현황
+            </h3>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '24px'
+            }}>
+              {/* 1. 기상청 동네정보 API */}
+              <div className="glass-panel clickable-card" onClick={() => router.push('/admin/apis?focus=api-1')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>기상청 동네예보 API</span>
+                  <span style={{ fontSize: '0.72rem', color: '#0984e3', background: 'rgba(9, 132, 227, 0.1)', border: '1px solid rgba(9, 132, 227, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>1일 기준</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0984e3' }}>
+                      {stats.weatherTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      fontWeight: '800',
+                      color: stats.weatherStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                      background: stats.weatherStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                      border: `1px solid ${stats.weatherStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                      padding: '4px 16px',
+                      borderRadius: '12px',
+                      display: 'inline-block'
+                    }}>
+                      {stats.weatherStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. 전국 푸드트럭 허가구역 점용공간 API */}
+              <div className="glass-panel clickable-card" onClick={() => router.push('/admin/apis?focus=api-2')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>전국 푸드트럭 허가구역 점용공간 API</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--primary)', background: 'rgba(108, 92, 231, 0.1)', border: '1px solid rgba(108, 92, 231, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>1개월 기준</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--primary)' }}>
+                      {stats.total || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      fontWeight: '800',
+                      color: stats.spotsStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                      background: stats.spotsStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                      border: `1px solid ${stats.spotsStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                      padding: '4px 16px',
+                      borderRadius: '12px',
+                      display: 'inline-block'
+                    }}>
+                      {stats.spotsStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. 네이버 지도 플랫폼 Geocoding API */}
+              <div className="glass-panel clickable-card" onClick={() => router.push('/admin/apis?focus=api-3')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>네이버 지도 플랫폼 Geocoding API</span>
+                  <span style={{ fontSize: '0.72rem', color: '#6c5ce7', background: 'rgba(108, 92, 231, 0.1)', border: '1px solid rgba(108, 92, 231, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간 기준</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#6c5ce7' }}>
+                      {stats.naverTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      fontWeight: '800',
+                      color: stats.naverStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                      background: stats.naverStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                      border: `1px solid ${stats.naverStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                      padding: '4px 16px',
+                      borderRadius: '12px',
+                      display: 'inline-block'
+                    }}>
+                      {stats.naverStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. 소상공인 상권분석 API */}
+              <div className="glass-panel clickable-card" onClick={() => router.push('/admin/apis?focus=api-4')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>소상공인 상권분석 API</span>
+                  <span style={{ fontSize: '0.72rem', color: '#eab543', background: 'rgba(234, 181, 67, 0.1)', border: '1px solid rgba(234, 181, 67, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간 기준</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#fdcb6e' }}>
+                      {stats.commercialTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      fontWeight: '800',
+                      color: stats.commercialStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                      background: stats.commercialStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                      border: `1px solid ${stats.commercialStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                      padding: '4px 16px',
+                      borderRadius: '12px',
+                      display: 'inline-block'
+                    }}>
+                      {stats.commercialStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. 행사문화 포털 API */}
+              <div className="glass-panel clickable-card" onClick={() => router.push('/admin/apis?focus=api-5')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>행사문화 포털 API</span>
+                  <span style={{ fontSize: '0.72rem', color: '#e84393', background: 'rgba(232, 67, 147, 0.1)', border: '1px solid rgba(232, 67, 147, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간 기준</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#e84393' }}>
+                      {stats.culturalTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      fontWeight: '800',
+                      color: stats.culturalStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                      background: stats.culturalStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                      border: `1px solid ${stats.culturalStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                      padding: '4px 16px',
+                      borderRadius: '12px',
+                      display: 'inline-block'
+                    }}>
+                      {stats.culturalStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <style jsx global>{`
+            .clickable-card {
+              transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .clickable-card:hover {
+              transform: translateY(-4px);
+              box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15) !important;
+            }
+          `}</style>
 
         </div>
       </main>

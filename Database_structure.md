@@ -142,3 +142,21 @@
 | **rulesDescription** | `text` | `NULL 허용` (지자체 허가 조건 및 제한 규칙) |
 | **createdAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `CURRENT_TIMESTAMP` |
 | **updatedAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `CURRENT_TIMESTAMP` |
+
+---
+
+### 📱 SnsExtraction (SNS 블로그 추출 행사 테이블)
+네이버 블로그 포스팅 등 소셜 네트워크 여론 분석을 통해 게릴라성으로 추출해 낸 로컬 핫플레이스 및 트렌디 행사 데이터입니다.
+
+| 컬럼명 | 데이터 타입 | 제약 조건 / 설명 |
+| :--- | :--- | :--- |
+| **id** | `integer` | **Primary Key** (자동 증가 일련번호) |
+| **title** | `varchar(150)` | **NOT NULL** (추출된 핫플레이스/행사 이름) |
+| **location** | `varchar(255)` | **NOT NULL** (추출된 개최 주소지) |
+| **startDate** | `date` | **NOT NULL** (예측 시작 시각) |
+| **endDate** | `date` | **NOT NULL** (예측 종료 시각) |
+| **scale** | `varchar(50)` | **NOT NULL**, 기본값: `'Normal'` (추출 규모) |
+| **latitude** | `numeric` | `NULL 허용` (위도) |
+| **longitude** | `numeric` | `NULL 허용` (경도) |
+| **description** | `text` | `NULL 허용` (블로그 핵심 언급 내용 요약) |
+| **createdAt** | `timestamp with time zone` | **NOT NULL**, 기본값: `now()` |
