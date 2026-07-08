@@ -55,6 +55,59 @@ export default function AdminDashboardPage() {
   const [detailType, setDetailType] = useState(''); // 'owners' | 'active_trucks' | 'total_trucks' | 'suspended_users'
   const [detailData, setDetailData] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  // 📡 실시간 Neon DB 통계 및 외부 API 소모율 병렬 페치 실행 함수
+  const fetchDbStats = async () => {
+    try {
+      setDashboardLoading(true);
+      const [statsRes, apisRes] = await Promise.all([
+        fetch('/api/admin/stats').then(r => r.json()),
+        fetch('/api/admin/apis?type=dashboard').then(r => r.json()).catch(() => ({ success: false }))
+      ]);
+
+      let mergedStats: StatsState = {
+        totalUsers: 0,
+        activeTrucks: 0,
+        totalTrucks: 0,
+        suspendedUsers: 0
+      };
+
+      if (statsRes.success) {
+        mergedStats.totalUsers = statsRes.totalUsers || 0;
+        mergedStats.activeTrucks = statsRes.activeTrucks || 0;
+        mergedStats.totalTrucks = statsRes.totalTrucks || 0;
+        mergedStats.suspendedUsers = statsRes.suspendedUsers || 0;
+      }
+
+      if (apisRes.success && apisRes.stats) {
+        const apiStats = apisRes.stats;
+        mergedStats = {
+          ...mergedStats,
+          total: apiStats.total || 0,
+          approved: apiStats.approved || 0,
+          rejected: apiStats.rejected || 0,
+          pending: apiStats.pending || 0,
+          weather: apiStats.weather || '',
+          naverTotal: apiStats.naverTotal || 0,
+          weatherTotal: apiStats.weatherTotal || 0,
+          weatherStatus: apiStats.weatherStatus || 'active',
+          spotsStatus: apiStats.spotsStatus || 'active',
+          naverStatus: apiStats.naverStatus || 'active',
+          commercialTotal: apiStats.commercialTotal || 0,
+          commercialStatus: apiStats.commercialStatus || 'active',
+          culturalTotal: apiStats.culturalTotal || 0,
+          culturalStatus: apiStats.culturalStatus || 'active'
+        };
+      }
+
+      setStats(mergedStats);
+    } catch (err) {
+      console.error('Failed to load dashboard statistics from Neon DB:', err);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
 
   // 1. 관리자 세션 체크 및 데이터 수집
   useEffect(() => {
@@ -70,54 +123,6 @@ export default function AdminDashboardPage() {
     const savedProvider = localStorage.getItem('roadfood_map_provider') || 'naver';
     setMapProvider(savedProvider);
 
-    // 📡 실시간 Neon DB 통계 및 외부 API 소모율 병렬 페치 실행
-    const fetchDbStats = async () => {
-      try {
-        const [statsRes, apisRes] = await Promise.all([
-          fetch('/api/admin/stats').then(r => r.json()),
-          fetch('/api/admin/apis?type=dashboard').then(r => r.json()).catch(() => ({ success: false }))
-        ]);
-
-        let mergedStats: StatsState = {
-          totalUsers: 0,
-          activeTrucks: 0,
-          totalTrucks: 0,
-          suspendedUsers: 0
-        };
-
-        if (statsRes.success) {
-          mergedStats.totalUsers = statsRes.totalUsers || 0;
-          mergedStats.activeTrucks = statsRes.activeTrucks || 0;
-          mergedStats.totalTrucks = statsRes.totalTrucks || 0;
-          mergedStats.suspendedUsers = statsRes.suspendedUsers || 0;
-        }
-
-        if (apisRes.success && apisRes.stats) {
-          const apiStats = apisRes.stats;
-          mergedStats = {
-            ...mergedStats,
-            total: apiStats.total || 0,
-            approved: apiStats.approved || 0,
-            rejected: apiStats.rejected || 0,
-            pending: apiStats.pending || 0,
-            weather: apiStats.weather || '',
-            naverTotal: apiStats.naverTotal || 0,
-            weatherTotal: apiStats.weatherTotal || 0,
-            weatherStatus: apiStats.weatherStatus || 'active',
-            spotsStatus: apiStats.spotsStatus || 'active',
-            naverStatus: apiStats.naverStatus || 'active',
-            commercialTotal: apiStats.commercialTotal || 0,
-            commercialStatus: apiStats.commercialStatus || 'active',
-            culturalTotal: apiStats.culturalTotal || 0,
-            culturalStatus: apiStats.culturalStatus || 'active'
-          };
-        }
-
-        setStats(mergedStats);
-      } catch (err) {
-        console.error('Failed to load dashboard statistics from Neon DB:', err);
-      }
-    };
     fetchDbStats();
   }, [router]);
 
@@ -167,147 +172,24 @@ export default function AdminDashboardPage() {
       <main style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: '100%', maxWidth: '1000px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
 
-          {/* 타이틀 및 개요 */}
-          <div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: '800', marginBottom: '8px' }}>
-              🛡️ 시스템 종합 현황 대시보드
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              푸드트럭 플랫폼 전체 가입 유저 수와 실시간 활성 장사 트럭 수량을 모니터링합니다.
-            </p>
-          </div>
-
-          {/* 📊 수치 집계 카드 그리드 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
- 
-            <div 
-              className="glass-panel" 
-              onClick={() => handleCardClick('owners')}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
-            >
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>전체 가입 사장님</span>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--text-primary)' }}>{stats.totalUsers} 명</span>
-            </div>
- 
-            <div 
-              className="glass-panel" 
-              onClick={() => handleCardClick('active_trucks')}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--success)', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
-            >
-              <span style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: '600' }}>현재 활성 트럭 (영업중)</span>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--success)' }}>{stats.activeTrucks} 대</span>
-            </div>
- 
-            <div 
-              className="glass-panel" 
-              onClick={() => handleCardClick('total_trucks')}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
-            >
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>등록 푸드트럭 수</span>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--accent)' }}>{stats.totalTrucks} 대</span>
-            </div>
- 
-            <div 
-              className="glass-panel" 
-              onClick={() => handleCardClick('suspended_users')}
-              style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '4px solid var(--danger)', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
-            >
-              <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: '600' }}>계정 일시 정지 수</span>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--danger)' }}>{stats.suspendedUsers} 건</span>
-            </div>
- 
-          </div>
-
-          {/* 실시간 큐 모아보기 리스트 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '30px' }}>
-
-            {/* 실시간 로그 테이블 */}
-            <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '220px', textAlign: 'center' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>⚙️</div>
-              <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-main)', marginBottom: '8px' }}>
-                실시간 플랫폼 이벤트 트래킹
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-                해당 기능은 현재 미구현 상태입니다.<br />
-                (이벤트 로그 및 알림 테이블 구축 시 연동 예정)
+          {/* 👋 종합 모니터링 대시보드 타이틀 및 실시간 상태 동적 갱신 버튼 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <h2 style={{ fontSize: '1.8rem', fontWeight: '850', marginBottom: '8px', letterSpacing: '-0.5px' }}>
+                📊 종합 모니터링 대시보드
+              </h2>
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                푸드트럭 구역 수집 현황 및 외부 연동 API 트래픽 통계를 실시간으로 파악합니다.
               </p>
             </div>
-
-            {/* 외부 API 연결 상태 상태 모니터 */}
-            <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                🔌 외부 API 연결망
-              </h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span>네이버 지도 SDK API</span>
-                  <span style={{ color: 'var(--success)', fontWeight: '600' }}>정상 (ACTIVE)</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span>공공 데이터 스팟 API</span>
-                  <span style={{ color: 'var(--success)', fontWeight: '600' }}>정상 (ACTIVE)</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span>기상청 기상 위성 API</span>
-                  <span style={{ color: 'var(--success)', fontWeight: '600' }}>정상 (ACTIVE)</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span>Claude 3.5 AI API</span>
-                  <span style={{ color: 'var(--warning)', fontWeight: '600' }}>연동 대기 (STANDBY)</span>
-                </div>
-              </div>
-
-              {/* 🗺️ 실시간 지도 공급자 전환 토글 스위치 */}
-              <hr style={{ border: 'none', borderBottom: '1px solid var(--border)', margin: '4px 0' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-                  🗺️ 서비스 전체 지도 공급 엔진 제어
-                </span>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>
-                  네이버 지도 API 일일 쿼터 초과 시 오픈스트리트맵(OSM)으로 긴급 우회할 수 있습니다.
-                </p>
-                <div style={{ display: 'flex', background: '#F1F2F6', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <button
-                    onClick={() => handleToggleMap('naver')}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      fontSize: '0.75rem',
-                      fontWeight: '700',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: mapProvider === 'naver' ? '#00B894' : 'transparent',
-                      color: mapProvider === 'naver' ? 'white' : 'var(--text-secondary)',
-                      transition: 'all 0.2s ease',
-                      boxShadow: mapProvider === 'naver' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none'
-                    }}
-                  >
-                    네이버 지도 (Naver)
-                  </button>
-                  <button
-                    onClick={() => handleToggleMap('osm')}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      fontSize: '0.75rem',
-                      fontWeight: '700',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: mapProvider === 'osm' ? '#00B894' : 'transparent',
-                      color: mapProvider === 'osm' ? 'white' : 'var(--text-secondary)',
-                      transition: 'all 0.2s ease',
-                      boxShadow: mapProvider === 'osm' ? '0 2px 5px rgba(0,0,0,0.1)' : 'none'
-                    }}
-                  >
-                    오픈스트리트맵 (OSM)
-                  </button>
-                </div>
-              </div>
-            </div>
-
+            <Button 
+              variant="secondary" 
+              onClick={fetchDbStats} 
+              disabled={dashboardLoading}
+              style={{ padding: '10px 20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {dashboardLoading ? '🔄 갱신 중...' : '🔄 실시간 상태 동적 갱신'}
+            </Button>
           </div>
 
           {/* 🔌 5대 외부 연동 API 현황 (신동원님 기능 이식 및 스타일 융합) */}
