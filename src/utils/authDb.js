@@ -222,8 +222,11 @@ export function updateTruckInfo(username, updatedTruck) {
   
   if (idx !== -1) {
     trucks[idx] = { ...trucks[idx], ...updatedTruck };
-    localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
+  } else {
+    // 신규 트럭 등록 처리
+    trucks.push({ ownerUsername: username, ...updatedTruck });
   }
+  localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
 
   // 🌐 [김유환 추가] 실시간 Neon DB 물리적 동기화 쿼리 (비동기 트리거)
   if (typeof window !== "undefined") {

@@ -78,13 +78,15 @@ export default function MyTruckManagementPage() {
         setCustomCategory(truckData.category);
         setIsCustomMode(true);
       }
+    } else {
+      // 💡 [버그 픽스] 트럭 정보가 아예 없는 신규 유저일 경우 빈 객체로 세팅하여 무한 로딩 방지
+      setTruck({});
     }
   }, []);
 
   // 2. 기본 정보 및 재고/대기 팀 일괄 업데이트
   const handleSaveBasicInfo = (e) => {
     e.preventDefault();
-    if (!truck) return;
 
     // 💡 카테고리 결정 (직접 입력 모드일 경우 customCategory 값 저장)
     const finalCategory = isCustomMode ? customCategory.trim() : category;
@@ -94,8 +96,9 @@ export default function MyTruckManagementPage() {
       return;
     }
 
+    const baseTruck = truck || {};
     const updated = {
-      ...truck,
+      ...baseTruck,
       name: truckName,
       intro: truckIntro,
       category: finalCategory,
@@ -126,7 +129,8 @@ export default function MyTruckManagementPage() {
     setMenuList(updatedMenu);
     
     // DB 저장
-    const updated = { ...truck, menu: updatedMenu };
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
     updateTruckInfo(session.username, updated);
     setTruck(updated);
 
@@ -143,7 +147,8 @@ export default function MyTruckManagementPage() {
     const updatedMenu = menuList.filter((_, idx) => idx !== idxToRemove);
     setMenuList(updatedMenu);
 
-    const updated = { ...truck, menu: updatedMenu };
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
     updateTruckInfo(session.username, updated);
     setTruck(updated);
     alert("🗑️ 메뉴가 삭제되었습니다.");
@@ -159,7 +164,8 @@ export default function MyTruckManagementPage() {
     });
     setMenuList(updatedMenu);
 
-    const updated = { ...truck, menu: updatedMenu };
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
     updateTruckInfo(session.username, updated);
     setTruck(updated);
   };
