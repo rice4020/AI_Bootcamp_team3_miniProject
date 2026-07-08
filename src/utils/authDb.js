@@ -18,13 +18,30 @@ const DEFAULT_OWNER = {
   needPasswordChange: false,
 };
 
+const EXTRA_OWNERS = [
+  { username: "superadmin", password: "admin123!@#", name: "총관리자", phone: "010-0000-0000", birthdate: "1980-01-01", email: "admin@yojari.com", needPasswordChange: false },
+  { username: "truck1", password: "truck123!", name: "푸드트럭1 점주", phone: "010-1111-1111", birthdate: "1991-01-01", email: "truck1@yojari.com", needPasswordChange: false },
+  { username: "truck2", password: "truck123!", name: "푸드트럭2 점주", phone: "010-2222-2222", birthdate: "1992-01-01", email: "truck2@yojari.com", needPasswordChange: false },
+  { username: "truck3", password: "truck123!", name: "푸드트럭3 점주", phone: "010-3333-3333", birthdate: "1993-01-01", email: "truck3@yojari.com", needPasswordChange: false },
+];
+
 // 초기화 함수
 export function initDb() {
   if (typeof window === "undefined") return;
   
-  if (!localStorage.getItem(USERS_KEY)) {
-    localStorage.setItem(USERS_KEY, JSON.stringify([DEFAULT_OWNER]));
+  const existingUsers = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+  const usersToInsert = [DEFAULT_OWNER, ...EXTRA_OWNERS];
+  
+  const mergedUsers = [...existingUsers];
+  for (const newU of usersToInsert) {
+      const idx = mergedUsers.findIndex(u => u.username === newU.username);
+      if (idx === -1) {
+          mergedUsers.push(newU);
+      } else {
+          mergedUsers[idx] = newU; // 오타 수정 등 최신 패스워드 반영
+      }
   }
+  localStorage.setItem(USERS_KEY, JSON.stringify(mergedUsers));
   
   if (!localStorage.getItem(TRUCKS_KEY)) {
     // 사장님 1(owner123)의 기본 트럭 세팅
@@ -50,42 +67,34 @@ export function initDb() {
 }
 
 // 1. 회원가입: 아이디 중복 확인
-export function checkUsernameDuplicate(username) {
-  initDb();
-  const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-  return users.some(u => u.username === username);
+export async function checkUsernameDuplicate(username) {
+  try {
+    const res = await fetch('/api/auth/check-username', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.isDuplicate;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
 }
 
 // 2. 회원가입: 사용자 등록
-export function registerUser(user) {
-  initDb();
-  const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-  
-  if (users.some(u => u.username === user.username)) {
-    throw new Error("이미 사용 중인 아이디입니다.");
+export async function registerUser(user) {
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(user)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '회원가입에 실패했습니다.');
   }
-  
-  users.push({
-    ...user,
-    needPasswordChange: false // 신규 가입자는 변경 대상 아님
-  });
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-  // 신규 가입 사장님의 기본 빈 트럭도 함께 생성
-  const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
-  trucks.push({
-    ownerUsername: user.username,
-    name: `${user.name} 사장님의 푸드트럭`,
-    category: "snack",
-    lat: 37.5665,
-    lng: 126.9780,
-    status: "prepare",
-    intro: "안녕하세요! 맛있는 음식을 대접하겠습니다.",
-    menu: [],
-    stock: 0,
-    waitingTeams: 0
-  });
-  localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
+  return data;
 }
 
 // 3. 로그인 처리
@@ -175,6 +184,29 @@ export function getCurrentSession() {
   return sessionData ? JSON.parse(sessionData) : null;
 }
 
+// 0. 하드코딩된 메뉴 리스트 조회 (카테고리 그룹화)
+export function getTruckMenus() {
+  return [
+    { id: 1, category: "분식", sub_menu: "떡볶이" },
+    { id: 2, category: "분식", sub_menu: "튀김" },
+    { id: 3, category: "디저트", sub_menu: "호떡" },
+    { id: 4, category: "디저트", sub_menu: "크레페" },
+    { id: 5, category: "꼬치", sub_menu: "닭꼬치" },
+    { id: 6, category: "꼬치", sub_menu: "염통" },
+    { id: 7, category: "타꼬야끼", sub_menu: "타꼬야끼" },
+    { id: 8, category: "양식", sub_menu: "스테이크" },
+    { id: 9, category: "양식", sub_menu: "버거" },
+    { id: 10, category: "이태리음식", sub_menu: "파스타" },
+    { id: 11, category: "이태리음식", sub_menu: "피자" }
+  ];
+}
+
+// 0-1. 새로운 메뉴 리스트 추가 (로컬 UI 전용)
+export function addTruckMenu(category, subMenu) {
+  // DB 연동이 사라졌으므로, UI상 처리만 지원 (단순 식별자 반환)
+  return 999;
+}
+
 // 8. 내 트럭 정보 조회
 export function getTruckInfo(username) {
   initDb();
@@ -190,10 +222,37 @@ export function updateTruckInfo(username, updatedTruck) {
   
   if (idx !== -1) {
     trucks[idx] = { ...trucks[idx], ...updatedTruck };
-    localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
-    
-    // 일반 소비자용 모의 데이터(MOCK_TRUCKS)와 동기화를 위해, MOCK_TRUCKS에 세션 유저의 트럭이 있다면 변경해 줍니다.
-    // MVP 상에서 일반 화면 지도 마커 연동을 위해 임시 저장
+  } else {
+    // 신규 트럭 등록 처리
+    trucks.push({ ownerUsername: username, ...updatedTruck });
+  }
+  localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
+
+  // 🌐 [김유환 추가] 실시간 Neon DB 물리적 동기화 쿼리 (비동기 트리거)
+  if (typeof window !== "undefined") {
+    fetch('/api/trucks', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ownerUsername: username,
+        name: updatedTruck.name,
+        category: updatedTruck.category,
+        intro: updatedTruck.intro,
+        menu: updatedTruck.menu,
+        stock: updatedTruck.stock,
+        waitingTeams: updatedTruck.waitingTeams,
+        status: updatedTruck.status,
+        lat: updatedTruck.lat,
+        lng: updatedTruck.lng
+      })
+    })
+    .then(res => res.json())
+    .then(json => {
+      if (json.success) console.log("✅ [Sync] 푸드트럭 메뉴/상태 데이터가 Neon DB와 동기화되었습니다.");
+    })
+    .catch(err => console.warn("⚠️ [Sync] Neon DB 동기화 통신 실패:", err));
   }
 }
 

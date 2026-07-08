@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -99,12 +99,43 @@ export default function Navbar({
   // ---------------- 💻 2. 데스크톱 상단 바 렌더링 (기존 유지) ----------------
   return (
     <nav className="navbar glass-panel" style={{ borderRadius: '0', borderWidth: '0 0 1px 0' }}>
-      <Link href={userType === "owner" ? "/owner" : userType === "admin" ? "/admin/dashboard" : "/"} className="nav-brand">
-        <span>🚚</span>
-        <span style={{ letterSpacing: '-0.5px' }}>
-          {userType === "owner" ? "YOJARI OWNER" : userType === "admin" ? "YOJARI ADMIN" : "YOJARI"}
+            <div 
+        onClick={() => {
+          if (userType === 'owner' || window.location.pathname.includes('/owner')) {
+            window.location.href = '/owner';
+          } else if (userType === 'admin') {
+            window.location.href = '/admin/dashboard';
+          } else {
+            window.location.href = '/';
+          }
+        }}
+        className="nav-brand"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+      >
+        <div style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '8px',
+          background: 'linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#FFF',
+          fontWeight: '900',
+          fontSize: '18px',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          Y
+        </div>
+        <span style={{ 
+          fontSize: '1.25rem', 
+          fontWeight: '800', 
+          color: 'var(--text-primary)',
+          letterSpacing: '-0.5px'
+        }}>
+          Yojari <span style={{ color: 'var(--primary)', fontWeight: '900' }}>{userType === "owner" ? "Owner" : userType === "admin" ? "Admin" : ""}</span>
         </span>
-      </Link>
+      </div>
 
       <div className="nav-links">
         {navItems.map((item) => {
@@ -179,3 +210,4 @@ export default function Navbar({
     </nav>
   );
 }
+

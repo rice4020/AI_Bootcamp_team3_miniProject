@@ -78,13 +78,15 @@ export default function MyTruckManagementPage() {
         setCustomCategory(truckData.category);
         setIsCustomMode(true);
       }
+    } else {
+      // 💡 [버그 픽스] 트럭 정보가 아예 없는 신규 유저일 경우 빈 객체로 세팅하여 무한 로딩 방지
+      setTruck({});
     }
   }, []);
 
   // 2. 기본 정보 및 재고/대기 팀 일괄 업데이트
   const handleSaveBasicInfo = (e) => {
     e.preventDefault();
-    if (!truck) return;
 
     // 💡 카테고리 결정 (직접 입력 모드일 경우 customCategory 값 저장)
     const finalCategory = isCustomMode ? customCategory.trim() : category;
@@ -94,8 +96,9 @@ export default function MyTruckManagementPage() {
       return;
     }
 
+    const baseTruck = truck || {};
     const updated = {
-      ...truck,
+      ...baseTruck,
       name: truckName,
       intro: truckIntro,
       category: finalCategory,
@@ -126,7 +129,8 @@ export default function MyTruckManagementPage() {
     setMenuList(updatedMenu);
     
     // DB 저장
-    const updated = { ...truck, menu: updatedMenu };
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
     updateTruckInfo(session.username, updated);
     setTruck(updated);
 
@@ -143,10 +147,27 @@ export default function MyTruckManagementPage() {
     const updatedMenu = menuList.filter((_, idx) => idx !== idxToRemove);
     setMenuList(updatedMenu);
 
-    const updated = { ...truck, menu: updatedMenu };
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
     updateTruckInfo(session.username, updated);
     setTruck(updated);
     alert("🗑️ 메뉴가 삭제되었습니다.");
+  };
+
+  // 4.5 메뉴 품절 상태 토글 (isSoldOut Toggle)
+  const handleToggleSoldOut = (idxToToggle) => {
+    const updatedMenu = menuList.map((item, idx) => {
+      if (idx === idxToToggle) {
+        return { ...item, isSoldOut: !item.isSoldOut };
+      }
+      return item;
+    });
+    setMenuList(updatedMenu);
+
+    const baseTruck = truck || {};
+    const updated = { ...baseTruck, menu: updatedMenu };
+    updateTruckInfo(session.username, updated);
+    setTruck(updated);
   };
 
   if (!session || !truck) {
@@ -340,31 +361,74 @@ export default function MyTruckManagementPage() {
                         alignItems: 'center',
                         fontSize: '0.9rem',
                         background: 'var(--surface-light)',
-                        border: '1px solid var(--border)'
+                        border: '1px solid var(--border)',
+                        opacity: item.isSoldOut ? 0.6 : 1, // 품절 시 흐리게 처리
+                        transition: 'opacity 0.2s'
                       }}
                     >
                       <div>
-                        <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{item.name}</span>
-                        <span style={{ color: 'var(--accent)', marginLeft: '12px', fontWeight: '600' }}>
+                        <span style={{ 
+                          fontWeight: '600', 
+                          color: 'var(--text-primary)',
+                          textDecoration: item.isSoldOut ? 'line-through' : 'none' // 품절 시 취소선
+                        }}>
+                          {item.name}
+                        </span>
+                        <span style={{ 
+                          color: 'var(--accent)', 
+                          marginLeft: '12px', 
+                          fontWeight: '600',
+                          textDecoration: item.isSoldOut ? 'line-through' : 'none'
+                        }}>
                           {item.price.toLocaleString()}원
                         </span>
+                        {item.isSoldOut && (
+                          <span style={{
+                            marginLeft: '8px',
+                            fontSize: '0.7rem',
+                            fontWeight: '850',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(214, 48, 49, 0.1)',
+                            color: '#D63031',
+                            border: '1px solid rgba(214, 48, 49, 0.2)'
+                          }}>
+                            품절 🔴
+                          </span>
+                        )}
                       </div>
-                      <button
-                        onClick={() => handleDeleteMenu(idx)}
-                        style={{
-                          color: 'var(--danger)',
-                          fontSize: '0.8rem',
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          background: 'rgba(214, 48, 49, 0.1)',
-                          border: '1px solid rgba(214, 48, 49, 0.2)',
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => e.target.style.background = 'var(--danger)'}
-                        onMouseLeave={(e) => e.target.style.background = 'rgba(214, 48, 49, 0.1)'}
-                      >
-                        삭제
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleToggleSoldOut(idx)}
+                          style={{
+                            color: item.isSoldOut ? 'var(--success)' : '#D63031',
+                            fontSize: '0.8rem',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: item.isSoldOut ? 'rgba(16, 185, 129, 0.08)' : 'rgba(214, 48, 49, 0.05)',
+                            border: item.isSoldOut ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(214, 48, 49, 0.15)',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          {item.isSoldOut ? '판매하기 🟢' : '품절 🔴'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMenu(idx)}
+                          style={{
+                            color: 'var(--danger)',
+                            fontSize: '0.8rem',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(214, 48, 49, 0.1)',
+                            border: '1px solid rgba(214, 48, 49, 0.2)',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'var(--danger)'}
+                          onMouseLeave={(e) => e.target.style.background = 'rgba(214, 48, 49, 0.1)'}
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
