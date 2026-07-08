@@ -12,6 +12,7 @@ export default function AdminContentPage() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [weatherLoading, setWeatherLoading] = useState(false);
 
   // 데이터 리스트 State
   const [events, setEvents] = useState([]);
@@ -37,7 +38,12 @@ export default function AdminContentPage() {
   const [eventLocation, setEventLocation] = useState('');
 
   // 1. 데이터 조회 함수 (Neon DB 연동 API 호출, 검색 및 좌표기반 기상동기화 지원)
-  const fetchContentData = async (query = '', lat = '', lng = '', region = '') => {
+  const fetchContentData = async (query = '', lat = '', lng = '', region = '', isWeatherOnly = false) => {
+    if (isWeatherOnly) {
+      setWeatherLoading(true);
+    } else {
+      setLoading(true);
+    }
     try {
       let url = '/api/admin/content';
       const params = new URLSearchParams();
@@ -74,6 +80,7 @@ export default function AdminContentPage() {
       console.error('Fetch Error:', err);
     } finally {
       setLoading(false);
+      setWeatherLoading(false);
     }
   };
 
@@ -85,8 +92,7 @@ export default function AdminContentPage() {
       setWeatherRegion(`${ev.name} (좌표 미등록)`);
       return;
     }
-    setLoading(true);
-    await fetchContentData('', ev.latitude, ev.longitude, ev.name);
+    await fetchContentData('', ev.latitude, ev.longitude, ev.name, true);
   };
 
   // 검색 실행 핸들러
@@ -439,8 +445,26 @@ export default function AdminContentPage() {
                     해당 장소의 실시간 날씨 현황이 표시됩니다.
                   </p>
                 </div>
-              ) : loading ? (
-                <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>날씨 데이터를 연동하고 있습니다...</p>
+              ) : weatherLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', gap: '16px' }}>
+                  <div className="spinner" style={{
+                    width: '36px',
+                    height: '36px',
+                    border: '3px solid rgba(255, 90, 95, 0.1)',
+                    borderTop: '3px solid var(--primary)',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                    실시간 기상 예보를 연동하고 있습니다...
+                  </p>
+                  <style>{`
+                    @keyframes spin {
+                      0% { transform: rotate(0deg); }
+                      100% { transform: rotate(360deg); }
+                    }
+                  `}</style>
+                </div>
               ) : weatherRegion.includes('미등록') || weatherRegion.includes('존재하지 않음') ? (
                 <div style={{ 
                   display: 'flex', 
