@@ -1,6 +1,5 @@
 /**
- * 🚚 MVP 로컬 데이터베이스 헬퍼 (localStorage 기반 Mock DB)
- * 추후 Supabase 등으로 스위칭하기 용이하도록 한곳에 모듈화합니다.
+ * 🚚 MVP 로컬 데이터베이스 헬퍼 (localStorage 기반 Mock DB + 백엔드 파일/Neon DB 실시간 백그라운드 동기화)
  */
 
 const USERS_KEY = "roadfood_users";
@@ -10,7 +9,7 @@ const TRUCKS_KEY = "roadfood_trucks";
 // 기본 사장님 더미 계정 세팅 (테스트용)
 const DEFAULT_OWNER = {
   username: "owner123",
-  password: "password123!", // 제약 조건 만족
+  password: "password123!",
   name: "홍길동",
   phone: "010-1234-5678",
   birthdate: "1990-01-01",
@@ -25,7 +24,7 @@ const EXTRA_OWNERS = [
   { username: "truck3", password: "truck123!", name: "푸드트럭3 점주", phone: "010-3333-3333", birthdate: "1993-01-01", email: "truck3@yojari.com", needPasswordChange: false },
 ];
 
-// 초기화 함수
+// 초기화 및 백그라운드 서버 동기화 함수
 export function initDb() {
   if (typeof window === "undefined") return;
   
@@ -44,7 +43,6 @@ export function initDb() {
   localStorage.setItem(USERS_KEY, JSON.stringify(mergedUsers));
   
   if (!localStorage.getItem(TRUCKS_KEY)) {
-    // 사장님 1(owner123)의 기본 트럭 세팅
     const defaultTrucks = [
       {
         ownerUsername: "owner123",
@@ -52,7 +50,7 @@ export function initDb() {
         category: "takoyaki",
         lat: 37.5665,
         lng: 126.9780,
-        status: "prepare", // 기본 준비중
+        status: "prepare",
         intro: "신선한 문어가 가득 들어있는 정통 타코야끼!",
         menu: [
           { name: "오리지널 타코야끼 (8알)", price: 5000 },
@@ -64,6 +62,18 @@ export function initDb() {
     ];
     localStorage.setItem(TRUCKS_KEY, JSON.stringify(defaultTrucks));
   }
+
+  // 📡 백그라운드로 서버의 최신 트럭 데이터를 가져와 로컬스토리지 갱신
+  fetch('/api/trucks')
+    .then(res => res.json())
+    .then(json => {
+      // API 응답 규격 대응 (성공 시 배열 바로 올 수 있음)
+      const list = Array.isArray(json) ? json : json.data;
+      if (Array.isArray(list) && list.length > 0) {
+        localStorage.setItem(TRUCKS_KEY, JSON.stringify(list));
+      }
+    })
+    .catch(err => console.error("서버 트럭 데이터 동기화 실패:", err));
 }
 
 // 1. 회원가입: 아이디 중복 확인
@@ -83,7 +93,7 @@ export async function checkUsernameDuplicate(username) {
   }
 }
 
-// 2. 회원가입: 사용자 등록
+// 2. 회원가입: 사용자 등록 (Neon DB + 로컬스토리지 병렬 세팅)
 export async function registerUser(user) {
   const res = await fetch('/api/auth/register', {
     method: 'POST',
@@ -94,6 +104,43 @@ export async function registerUser(user) {
   if (!res.ok) {
     throw new Error(data.error || '회원가입에 실패했습니다.');
   }
+
+  // 로컬스토리지 동기화 및 기본트럭 세팅 (폴백용)
+  if (typeof window !== "undefined") {
+    initDb();
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+    if (!users.some(u => u.username === user.username)) {
+      users.push({ ...user, needPasswordChange: false });
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    }
+
+    const newTruck = {
+      ownerUsername: user.username,
+      name: `${user.name} 사장님의 푸드트럭`,
+      category: "snack",
+      lat: 37.5665,
+      lng: 126.9780,
+      status: "prepare",
+      intro: "안녕하세요! 맛있는 음식을 대접하겠습니다.",
+      menu: [],
+      stock: 0,
+      waitingTeams: 0
+    };
+
+    const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
+    if (!trucks.some(t => t.ownerUsername === user.username)) {
+      trucks.push(newTruck);
+      localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
+    }
+
+    // 백그라운드 서버 트럭 등록 요청
+    fetch('/api/trucks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTruck)
+    }).catch(err => console.error("서버 신규 트럭 등록 실패:", err));
+  }
+
   return data;
 }
 
@@ -111,7 +158,6 @@ export function loginUser(username, password) {
     throw new Error("운영진에 의해 정지된 계정입니다. 고객센터에 문의하세요.");
   }
   
-  // 세션 저장
   localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   return user;
 }
@@ -138,15 +184,13 @@ export function findUserPassword(username, name, phone) {
     throw new Error("일치하는 회원 정보가 없습니다.");
   }
   
-  // 임시비밀번호 규칙: 휴대전화 번호 뒤 4자리 + 생년월일 6자리 조합으로 구성 (예: '5678900101!')
   const user = users[userIdx];
   const rawPhone = user.phone.replace(/[^0-9]/g, "");
   const lastFourPhone = rawPhone.slice(-4);
-  const cleanBirth = user.birthdate.replace(/[^0-9]/g, "").slice(-6); // YYMMDD
+  const cleanBirth = user.birthdate.replace(/[^0-9]/g, "").slice(-6);
   
   const tempPassword = `${lastFourPhone}${cleanBirth}!`;
   
-  // 임시 비밀번호로 교체 및 강제변경 플래그 TRUE 설정
   users[userIdx].password = tempPassword;
   users[userIdx].needPasswordChange = true;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -165,10 +209,9 @@ export function changeUserPassword(username, newPassword) {
   }
   
   users[userIdx].password = newPassword;
-  users[userIdx].needPasswordChange = false; // 변경 완료 시 해제
+  users[userIdx].needPasswordChange = false;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
   
-  // 현재 세션 정보도 업데이트
   const currentSession = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
   if (currentSession.username === username) {
     currentSession.password = newPassword;
@@ -203,7 +246,6 @@ export function getTruckMenus() {
 
 // 0-1. 새로운 메뉴 리스트 추가 (로컬 UI 전용)
 export function addTruckMenu(category, subMenu) {
-  // DB 연동이 사라졌으므로, UI상 처리만 지원 (단순 식별자 반환)
   return 999;
 }
 
@@ -214,46 +256,31 @@ export function getTruckInfo(username) {
   return trucks.find(t => t.ownerUsername === username) || null;
 }
 
-// 9. 내 트럭 정보 업데이트
+// 9. 내 트럭 정보 업데이트 (Neon DB + 로컬스토리지 병렬 업데이트)
 export function updateTruckInfo(username, updatedTruck) {
   initDb();
   const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
   const idx = trucks.findIndex(t => t.ownerUsername === username);
   
+  const newTrucks = [...trucks];
   if (idx !== -1) {
-    trucks[idx] = { ...trucks[idx], ...updatedTruck };
+    newTrucks[idx] = { ...newTrucks[idx], ...updatedTruck };
   } else {
-    // 신규 트럭 등록 처리
-    trucks.push({ ownerUsername: username, ...updatedTruck });
+    newTrucks.push({ ...updatedTruck, ownerUsername: username });
   }
-  localStorage.setItem(TRUCKS_KEY, JSON.stringify(trucks));
-
-  // 🌐 [김유환 추가] 실시간 Neon DB 물리적 동기화 쿼리 (비동기 트리거)
-  if (typeof window !== "undefined") {
-    fetch('/api/trucks', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        ownerUsername: username,
-        name: updatedTruck.name,
-        category: updatedTruck.category,
-        intro: updatedTruck.intro,
-        menu: updatedTruck.menu,
-        stock: updatedTruck.stock,
-        waitingTeams: updatedTruck.waitingTeams,
-        status: updatedTruck.status,
-        lat: updatedTruck.lat,
-        lng: updatedTruck.lng
-      })
-    })
-    .then(res => res.json())
-    .then(json => {
-      if (json.success) console.log("✅ [Sync] 푸드트럭 메뉴/상태 데이터가 Neon DB와 동기화되었습니다.");
-    })
-    .catch(err => console.warn("⚠️ [Sync] Neon DB 동기화 통신 실패:", err));
-  }
+  localStorage.setItem(TRUCKS_KEY, JSON.stringify(newTrucks));
+  
+  // 📡 백그라운드로 서버와 동기화 (PUT)
+  fetch('/api/trucks', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...updatedTruck, ownerUsername: username })
+  })
+  .then(res => res.json())
+  .then(json => {
+    if (json.success) console.log("✅ [Sync] 푸드트럭 데이터가 Neon DB와 동기화되었습니다.");
+  })
+  .catch(err => console.error("서버에 트럭 정보 동기화 실패:", err));
 }
 
 // 10. 회원 탈퇴 (Hard Delete)
@@ -266,6 +293,16 @@ export function deleteUserAccount(username) {
   const trucks = JSON.parse(localStorage.getItem(TRUCKS_KEY) || "[]");
   const updatedTrucks = trucks.filter(t => t.ownerUsername !== username);
   localStorage.setItem(TRUCKS_KEY, JSON.stringify(updatedTrucks));
+  
+  // 📡 서버에서도 해당 유저의 트럭 비활성화(inactive) 처리
+  const targetTruck = trucks.find(t => t.ownerUsername === username);
+  if (targetTruck) {
+    fetch('/api/trucks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...targetTruck, status: 'inactive', ownerUsername: username })
+    }).catch(err => console.error("서버 탈퇴 트럭 상태 변경 실패:", err));
+  }
   
   localStorage.removeItem(SESSION_KEY);
 }

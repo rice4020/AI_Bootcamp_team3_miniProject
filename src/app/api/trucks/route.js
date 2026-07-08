@@ -1,21 +1,58 @@
+import { NextResponse } from 'next/server';
 import { sql, IS_MOCK_MODE } from '@/lib/db';
+import fs from 'fs/promises';
+import path from 'path';
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const TRUCKS_FILE = path.join(DATA_DIR, 'trucks.json');
+
+// 트럭 파일 데이터 로드 (폴백용)
+async function getTrucksFileData() {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    try {
+      await fs.access(TRUCKS_FILE);
+    } catch {
+      await fs.writeFile(TRUCKS_FILE, JSON.stringify([], null, 2), 'utf-8');
+      return [];
+    }
+    const fileContent = await fs.readFile(TRUCKS_FILE, 'utf-8');
+    const data = JSON.parse(fileContent);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('⚠️ [API/trucks] 폴백 JSON 읽기 실패:', err.message);
+    return [];
+  }
+}
+
+// 트럭 파일 데이터 저장 (폴백용)
+async function saveTrucksFileData(data) {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(TRUCKS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('⚠️ [API/trucks] 폴백 JSON 쓰기 실패:', err.message);
+    return false;
+  }
+}
 
 /**
  * 🚚 푸드트럭 실시간 목록 조회 API
  * GET /api/trucks
  */
 export async function GET(request) {
-  // 1. [안전장치] 만약 로컬에 DATABASE_URL이 지정되어 있지 않은 가상 모드(Mock Mode)라면
-  //    데이터베이스 서버에 절대 접근하지 않고 즉시 안전하게 빈 배열을 반환합니다.
+  // 1. 만약 DATABASE_URL이 없는 가상/Mock 모드라면 바로 파일 캐시를 로드해 리턴합니다.
   if (IS_MOCK_MODE) {
-    console.log('ℹ️ [API/trucks] DATABASE_URL이 없어 가상(Mock) 모드로 작동 중입니다. DB 연결을 건너뜁니다.');
-    return Response.json([]);
+    console.log('ℹ️ [API/trucks] DATABASE_URL이 없어 가상(Mock) 파일 모드로 작동합니다.');
+    const fileData = await getTrucksFileData();
+    return NextResponse.json(fileData);
   }
 
   try {
     console.log('🔄 [API/trucks] Neon Database 실시간 푸드트럭 데이터 쿼리 시작...');
     
-    // 2. 우선 핵심 관리 테이블인 "FoodTruck" (Prisma 규격) 조회를 시도합니다.
+    // A. 1순위: Neon DB "FoodTruck" 테이블 조회
     try {
       const rows = await sql`
         SELECT 
@@ -32,94 +69,107 @@ export async function GET(request) {
         FROM "FoodTruck"
       `;
       
-      // 데이터가 정상 조회되었으면 가공하여 클라이언트에 전달합니다.
       const formatted = rows.map(r => ({
         id: r.id,
         name: r.name,
-        category: r.category || 'snack', // 기본값 매칭
+        category: r.category || 'snack',
         lat: Number(r.latitude),
         lng: Number(r.longitude),
-        status: String(r.status).toLowerCase(), // 소문자 통일 (preparing, active, sold_out, closed 등)
+        status: String(r.status).toLowerCase(), // preparing, active, sold_out, closed 등
         ownerName: r.ownerName,
-        phone: "010-1234-5678", // 보안상 기본값 대입
+        phone: "010-1234-5678",
         intro: r.notice || "안녕하세요! 실시간 영업 정보입니다.",
         menu: r.menu ? JSON.parse(r.menu) : [],
         stock: Number(r.stock || 0),
-        waitingTeams: 0 // 기본값 세팅
-      }));
-
-      return Response.json(formatted);
-
-    } catch (prismaError) {
-      console.warn('⚠️ [API/trucks] "FoodTruck" 테이블 조회 실패. 임시 "food_trucks" 테이블로 전환합니다:', prismaError.message);
-      
-      // 3. 만약 "FoodTruck"이 없다면, 임시/대시보드 통계용 테이블인 "food_trucks" 조회를 시도합니다.
-      const rows = await sql`
-        SELECT 
-          id, 
-          owner_username AS "ownerName", 
-          truck_name AS name, 
-          status, 
-          latitude, 
-          longitude 
-        FROM food_trucks
-      `;
-
-      const formatted = rows.map(r => ({
-        id: r.id,
-        name: r.name,
-        category: 'snack', // 임시 카테고리
-        lat: Number(r.latitude),
-        lng: Number(r.longitude),
-        status: String(r.status).toLowerCase(), // active, preparing, sold_out, inactive 등
-        ownerName: r.ownerName,
-        phone: "010-1234-5678",
-        intro: "실시간 위치 정보가 갱신되었습니다.",
-        menu: [],
-        stock: 0,
         waitingTeams: 0
       }));
 
-      return Response.json(formatted);
+      return NextResponse.json(formatted);
+
+    } catch (dbError) {
+      console.warn('⚠️ [API/trucks] Neon DB 쿼리 실패. 로컬 파일 "trucks.json" 폴백을 시도합니다:', dbError.message);
+      const fileData = await getTrucksFileData();
+      return NextResponse.json(fileData);
     }
 
   } catch (error) {
-    // 4. 데이터베이스 테이블이 아직 마이그레이션 전이거나 기타 에러 발생 시 크래시 방지를 위해 빈 배열을 반환합니다.
-    console.error('❌ [API/trucks] Neon DB 연동 중 오류가 발생했습니다. 빈 배열을 반환합니다:', error.message);
-    return Response.json([]);
+    console.error('❌ [API/trucks] Neon DB 및 파일 연동 장애:', error.message);
+    return NextResponse.json([]);
   }
 }
 
 /**
- * 🚚 푸드트럭 정보 및 메뉴 실시간 Neon DB 업데이트 API
- * PUT /api/trucks
+ * 🚚 푸드트럭 정보 및 메뉴 실시간 Neon DB 및 파일 업데이트 API
+ * PUT /api/trucks (또는 POST/PUT 지원)
  */
 export async function PUT(request) {
+  return await handleUpdate(request);
+}
+
+export async function POST(request) {
+  return await handleUpdate(request);
+}
+
+async function handleUpdate(request) {
+  let params;
+  try {
+    params = await request.json();
+  } catch (err) {
+    return NextResponse.json({ success: false, error: '잘못된 JSON 바디 규격입니다.' }, { status: 400 });
+  }
+
+  const { ownerUsername, name, category, intro, menu, stock, status, lat, lng } = params;
+  const username = ownerUsername || params.id;
+
+  if (!username) {
+    return NextResponse.json({ success: false, error: 'ownerUsername이 누락되었습니다.' }, { status: 400 });
+  }
+
+  // 1. Mock 모드일 시 로컬 JSON에만 기록
   if (IS_MOCK_MODE) {
-    return Response.json({ success: true, message: "MOCK 모드: DB 저장을 생략합니다." });
+    const fileData = await getTrucksFileData();
+    const idx = fileData.findIndex(t => t.ownerUsername === username);
+    const updatedObj = {
+      id: username,
+      ownerUsername: username,
+      name: name || '푸드트럭',
+      category: category || 'snack',
+      lat: lat || 37.5285,
+      lng: lng || 126.9328,
+      status: status || 'inactive',
+      intro: intro || '',
+      menu: menu || [],
+      stock: stock || 0,
+      waitingTeams: 0
+    };
+    if (idx !== -1) {
+      fileData[idx] = updatedObj;
+    } else {
+      fileData.push(updatedObj);
+    }
+    await saveTrucksFileData(fileData);
+    return NextResponse.json({ success: true, message: "가상 모드: 로컬 파일에 데이터를 업데이트했습니다." });
   }
 
   try {
-    const { ownerUsername, name, category, intro, menu, stock, waitingTeams, status, lat, lng } = await request.json();
-    console.log(`🔄 [API/trucks] Neon Database 푸드트럭 정보 업데이트 시작 (Owner: ${ownerUsername})...`);
-
+    console.log(`🔄 [API/trucks] Neon Database 푸드트럭 정보 업데이트 시작 (Owner: ${username})...`);
     const menuStr = JSON.stringify(menu || []);
 
-    // 1. 해당 사장님 ID(ownerId)를 기준으로 먼저 UPDATE 쿼리를 시도합니다.
+    // A. 1순위: DB UPDATE 시도
     let res = await sql`
       UPDATE "FoodTruck"
       SET 
-        "truckName" = ${name},
+        "truckName" = ${name || '푸드트럭'},
         menu = ${menuStr},
         stock = ${stock || 0},
         status = ${status || 'inactive'},
         notice = ${intro || ''},
         "updatedAt" = NOW()
-      WHERE "ownerId" = ${ownerUsername}
+      WHERE "ownerId" = ${username}
       RETURNING *
     `;
 
-    // 2. 만약 해당 ownerId의 트럭 레코드가 존재하지 않는다면 신규 생성(INSERT)해 줍니다.
+    // B. 레코드 없을 시 INSERT
     if (!res || res.length === 0) {
       res = await sql`
         INSERT INTO "FoodTruck" (
@@ -135,14 +185,14 @@ export async function PUT(request) {
           "updatedAt"
         )
         VALUES (
-          ${ownerUsername + '_truck'}, 
-          ${ownerUsername}, 
-          ${name}, 
+          ${username + '_truck'}, 
+          ${username}, 
+          ${name || '푸드트럭'}, 
           ${menuStr}, 
           ${stock || 0}, 
           ${status || 'inactive'}, 
-          ${lat || null}, 
-          ${lng || null}, 
+          ${lat || 37.5285}, 
+          ${lng || 126.9328}, 
           ${intro || ''}, 
           NOW()
         )
@@ -150,12 +200,62 @@ export async function PUT(request) {
       `;
     }
 
+    // 파일 캐시와도 실시간 미러 동기화 (Fail-safe 보장)
+    try {
+      const fileData = await getTrucksFileData();
+      const idx = fileData.findIndex(t => t.ownerUsername === username);
+      const mirrorObj = {
+        id: username,
+        ownerUsername: username,
+        name: name || '푸드트럭',
+        category: category || 'snack',
+        lat: lat || 37.5285,
+        lng: lng || 126.9328,
+        status: status || 'inactive',
+        intro: intro || '',
+        menu: menu || [],
+        stock: stock || 0,
+        waitingTeams: 0
+      };
+      if (idx !== -1) {
+        fileData[idx] = mirrorObj;
+      } else {
+        fileData.push(mirrorObj);
+      }
+      await saveTrucksFileData(fileData);
+    } catch (mirrorErr) {
+      console.warn("⚠️ [API/trucks] 파일 동기화 미러링 실패:", mirrorErr.message);
+    }
+
     console.log(`✅ [API/trucks] 푸드트럭 정보 DB 동기화 성공 (ID: ${res[0].id})`);
-    return Response.json({ success: true, data: res[0] });
+    return NextResponse.json({ success: true, data: res[0] });
 
   } catch (error) {
-    console.error("❌ [API/trucks] 푸드트럭 DB 동기화 실패:", error.message);
-    return Response.json({ success: false, error: error.message }, { status: 500 });
+    console.error("❌ [API/trucks] 푸드트럭 DB 동기화 실패 (로컬 파일로 백업 저장 시도):", error.message);
+    
+    // DB 연결 문제 발생 시 최후 수단으로 파일에 영구 기록
+    const fileData = await getTrucksFileData();
+    const idx = fileData.findIndex(t => t.ownerUsername === username);
+    const backupObj = {
+      id: username,
+      ownerUsername: username,
+      name: name || '푸드트럭',
+      category: category || 'snack',
+      lat: lat || 37.5285,
+      lng: lng || 126.9328,
+      status: status || 'inactive',
+      intro: intro || '',
+      menu: menu || [],
+      stock: stock || 0,
+      waitingTeams: 0
+    };
+    if (idx !== -1) {
+      fileData[idx] = backupObj;
+    } else {
+      fileData.push(backupObj);
+    }
+    await saveTrucksFileData(fileData);
+
+    return NextResponse.json({ success: true, message: "DB 연결 실패로 인한 파일 캐시 저장 처리 완료." });
   }
 }
-

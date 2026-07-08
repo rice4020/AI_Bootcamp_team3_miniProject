@@ -5,94 +5,105 @@ import { useRouter } from 'next/navigation';
 import Navbar from '../../../components/Navbar';
 import Button from '../../../components/Button';
 
-// 모의 수집 API 정보 데이터
-const MOCK_APIS = [
-  {
-    id: 'api-1',
-    name: "기상청 동네예보 API",
-    status: "active",
-    lastUpdated: "2026-07-02 12:00",
-    collectedCount: 48,
-    details: [
-      { id: 'det-1', location: "서울 중구", value: "맑음, 28°C", state: "승인됨" },
-      { id: 'det-2', location: "서울 강남구", value: "맑음, 29°C", state: "대기중" },
-    ]
-  },
-  {
-    id: 'api-2',
-    name: "전국 푸드트럭 허가구역 점용공간 API",
-    status: "active",
-    lastUpdated: "2026-07-01 08:30",
-    collectedCount: 120,
-    details: [
-      { id: 'det-3', spotName: "여의도 한강공원 3주차장", address: "서울 영등포구", state: "승인됨" },
-      { id: 'det-4', spotName: "마포구 홍대 걷고싶은거리", address: "서울 마포구", state: "대기중" },
-    ]
-  },
-  {
-    id: 'api-3',
-    name: "네이버 지도 플랫폼 Geocoding API",
-    status: "active",
-    lastUpdated: "2026-06-30 23:00",
-    collectedCount: 2500,
-    details: [
-      { id: 'det-5', query: "서울 특별시청", result: "37.5665, 126.9780", state: "정상연동" }
-    ]
-  }
-];
-
 export default function AdminApisPage() {
   const router = useRouter();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [apiList, setApiList] = useState([]);
-  
-  // 확장(토글)된 API 상태 관리
-  const [expandedApiId, setExpandedApiId] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+
+  // 활성화된 API 탭 상태 관리 ('api-1' = 기상청, 'api-2' = 푸드트럭, 'api-3' = 네이버, 'api-4' = 상권분석, 'api-5' = 행사문화)
+  const [activeTab, setActiveTab] = useState('api-1');
+
+  // 📄 각 API별 페이지네이션 상태 관리
+  const [pages, setPages] = useState({
+    'api-1': 1,
+    'api-2': 1,
+    'api-3': 1,
+    'api-4': 1,
+    'api-5': 1
+  });
+
+  // 토스트 알림 헬퍼 함수
+  const showToast = (message, type = 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'info' });
+    }, 3000);
+  };
+
+  // 실시간 API 상태 및 수집 내역 로드
+  const fetchApis = async (currentPages = pages) => {
+    try {
+      const q = `?type=systems&page_api1=${currentPages['api-1']}&page_api2=${currentPages['api-2']}&page_api3=${currentPages['api-3']}&page_api4=${currentPages['api-4']}&page_api5=${currentPages['api-5']}`;
+      const res = await fetch(`/api/admin/apis${q}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setApiList(json.data);
+        }
+      }
+    } catch (err) {
+      console.error("API 연동 정보 로드 실패:", err);
+      showToast("API 연동 정보를 불러오지 못했습니다.", "error");
+    }
+  };
+
+  // 특정 API의 페이지 변경 핸들러
+  const handlePageChange = (apiId, newPage) => {
+    const nextPages = { ...pages, [apiId]: newPage };
+    setPages(nextPages);
+    fetchApis(nextPages);
+  };
 
   useEffect(() => {
     const adminSession = localStorage.getItem('roadfood_admin_session');
     if (!adminSession) {
-      alert("관리자 권한이 필요한 서비스입니다.");
       router.push('/admin');
       return;
     }
     setIsAdmin(true);
-    setApiList(MOCK_APIS);
+    fetchApis();
+
+    // 💡 URL 쿼리 스트링에서 focus 대상 API 식별자(focus) 파싱하여 활성화 탭 세팅
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get('focus');
+    if (focusId && ['api-1', 'api-2', 'api-3', 'api-4', 'api-5'].includes(focusId)) {
+      setActiveTab(focusId);
+    }
   }, []);
 
-  // 토글 열기/닫기
-  const handleToggleExpand = (id) => {
-    if (expandedApiId === id) {
-      setExpandedApiId(null);
-    } else {
-      setExpandedApiId(id);
-    }
-  };
-
-  // 모의 승인 / 반려 기능
-  const handleApproveDetail = (apiId, detailId, approve = true) => {
-    alert(`해당 수집 항목이 ${approve ? '승인' : '반려'} 처리되어 소비자 지도 데이터베이스에 실시간 반영 조치되었습니다.`);
-    
-    const updated = apiList.map(api => {
-      if (api.id === apiId) {
-        const updatedDetails = api.details.map(det => {
-          if (det.id === detailId) {
-            return { ...det, state: approve ? '승인됨' : '반려됨' };
-          }
-          return det;
-        });
-        return { ...api, details: updatedDetails };
+  // 실제 강제 동기화 프로세스 작동 연동
+  const handleSyncApi = async (apiId, apiName) => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    showToast(`🔄 [${apiName}] 강제 동기화를 시작합니다. 잠시만 기다려 주세요...`, "info");
+    try {
+      const res = await fetch('/api/admin/apis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          apiId
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message || `🔄 [${apiName}] 강제 동기화 완료!`, "success");
+          fetchApis(); // 갱신
+        } else {
+          showToast("⚠️ 동기화 실패: " + json.error, "error");
+        }
+      } else {
+        showToast("⚠️ 서버 연결에 실패했습니다.", "error");
       }
-      return api;
-    });
-
-    setApiList(updated);
-  };
-
-  // 모의 동기화 갱신 작동
-  const handleSyncApi = (apiName) => {
-    alert(`🔄 [${apiName}] 공공 API 커넥션 연결 확인 후, 최신 데이터 테이블의 강제 갱신(Sync)을 성공적으로 마쳤습니다.`);
+    } catch (err) {
+      showToast("⚠️ 동기화 장애 발생: " + err.message, "error");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   if (!isAdmin) {
@@ -107,161 +118,336 @@ export default function AdminApisPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--background)' }}>
-      {/* 관리자 헤더 */}
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}>
+      {/* 🧭 관리자 네비게이션 바 */}
       <Navbar userType="admin" />
 
       <main style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: '100%', maxWidth: '1000px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
           <div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', marginBottom: '8px' }}>
-              🔌 외부 공공데이터 API 연동 관리자 센터
+            <h2 style={{ fontSize: '1.6rem', fontWeight: '850', marginBottom: '8px', letterSpacing: '-0.5px' }}>
+              🔌 외부 연동 API 모니터링 센터
             </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              기상청, 점용공간허가, 네이버 지도 API 커넥터들의 트래픽 및 수집 내역을 수동 검수/조정하거나 승인 및 즉시 갱신합니다.
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+              기상청 날씨 조회 API 및 네이버 지도 Geocoding API 커넥터들의 통신 상태, 요량 및 변환 수집 이력을 점검하고 강제 갱신합니다.
             </p>
           </div>
 
-          {/* API 리스트 및 검수/조정 토글 패널 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {apiList.map(api => {
-              const isExpanded = expandedApiId === api.id;
-              
+          {/* 🗂️ 가로형 탭 메뉴 바 (3안: 패딩/폰트/라벨 컴팩트화로 1줄에 밀착 배치) */}
+          <div style={{
+            display: 'flex',
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: '2px',
+            gap: '6px',
+            width: '100%',
+            overflowX: 'hidden'
+          }}>
+            {[
+              { id: 'api-1', label: '⛅ 기상청 날씨' },
+              { id: 'api-2', label: '🚚 전국 푸드트럭' },
+              { id: 'api-3', label: '🗺️ 네이버 지도' },
+              { id: 'api-4', label: '🏢 소상공인 상권' },
+              { id: 'api-5', label: '🎭 행사문화 포털' }
+            ].map(tab => {
+              const isActive = activeTab === tab.id;
               return (
-                <div key={api.id} className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  
-                  {/* API 헤더 정보 */}
-                  <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span>{api.name}</span>
-                        <span style={{
-                          fontSize: '0.7rem',
-                          background: 'rgba(0, 184, 148, 0.1)',
-                          border: '1px solid var(--success)',
-                          color: 'var(--success)',
-                          padding: '2px 8px',
-                          borderRadius: '10px',
-                          fontWeight: '600'
-                        }}>
-                          {api.status === 'active' ? '연결정상' : '연결장애'}
-                        </span>
-                      </h3>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                        최근 동기화일: {api.lastUpdated} | 누적 수집 건수: {api.collectedCount}건
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <Button
-                        variant="secondary"
-                        onClick={() => handleSyncApi(api.name)}
-                        style={{ padding: '8px 16px', fontSize: '0.8rem' }}
-                      >
-                        🔄 강제 동기화
-                      </Button>
-                      
-                      <Button
-                        variant="primary"
-                        onClick={() => handleToggleExpand(api.id)}
-                        style={{ padding: '8px 16px', fontSize: '0.8rem' }}
-                      >
-                        {isExpanded ? '상세 닫기 ▲' : '상세 목록 열기 ▼'}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* 토글 확장 상세 검수 영역 */}
-                  {isExpanded && (
-                    <div style={{
-                      marginTop: '12px',
-                      padding: '20px',
-                      background: 'rgba(255,255,255,0.01)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '12px',
-                    }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent)', display: 'block', marginBottom: '14px' }}>
-                        📡 수집 데이터 실시간 검수 목록 (승인 및 조정 대상)
-                      </span>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {api.details.map(det => (
-                          <div
-                            key={det.id}
-                            style={{
-                              padding: '14px',
-                              background: 'rgba(255,255,255,0.01)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '8px',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              fontSize: '0.85rem'
-                            }}
-                          >
-                            <div>
-                              <strong style={{ color: 'var(--text-primary)' }}>{det.location || det.spotName || det.query}</strong>
-                              <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>
-                                {det.value || det.address || det.result}
-                              </span>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                              {/* 현재 상태 뱃지 */}
-                              <span style={{
-                                fontSize: '0.75rem',
-                                color: det.state === '승인됨' ? 'var(--success)' : det.state === '대기중' ? 'var(--warning)' : 'var(--text-secondary)'
-                              }}>
-                                {det.state}
-                              </span>
-
-                              {/* 승인/반려 조작 액션 (대기 중 상태일 때 노출) */}
-                              {det.state === '대기중' && (
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                  <button
-                                    onClick={() => handleApproveDetail(api.id, det.id, true)}
-                                    style={{
-                                      padding: '4px 8px',
-                                      fontSize: '0.75rem',
-                                      background: 'rgba(0, 184, 148, 0.1)',
-                                      color: 'var(--success)',
-                                      border: '1px solid rgba(0, 184, 148, 0.2)',
-                                      borderRadius: '6px'
-                                    }}
-                                  >
-                                    승인
-                                  </button>
-                                  <button
-                                    onClick={() => handleApproveDetail(api.id, det.id, false)}
-                                    style={{
-                                      padding: '4px 8px',
-                                      fontSize: '0.75rem',
-                                      background: 'rgba(214, 48, 49, 0.1)',
-                                      color: 'var(--danger)',
-                                      border: '1px solid rgba(214, 48, 49, 0.2)',
-                                      borderRadius: '6px'
-                                    }}
-                                  >
-                                    반려
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 8px',
+                    fontSize: '0.8rem',
+                    fontWeight: isActive ? '800' : '600',
+                    color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
+                    background: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.02)',
+                    border: '1px solid var(--border)',
+                    borderBottom: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    borderRadius: '10px 10px 0 0',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    textAlign: 'center',
+                    textOverflow: 'ellipsis',
+                    overflow: 'hidden',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 -4px 15px rgba(108, 92, 231, 0.2)' : 'none'
+                  }}
+                  className={isActive ? '' : 'tab-hover'}
+                  title={tab.label}
+                >
+                  {tab.label}
+                </button>
               );
             })}
           </div>
 
+          {/* 📄 선택된 API의 단독 상세 관리 패널 */}
+          {(() => {
+            const api = apiList.find(item => item.id === activeTab);
+            if (!api) {
+              return (
+                <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  데이터를 실시간 로드 중이거나, 연동 중인 API 목록이 존재하지 않습니다.
+                </div>
+              );
+            }
+
+            return (
+              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {/* 1. API 기본 메타 정보 및 강제 갱신 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '20px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '850', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span>{api.name}</span>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        background: api.status === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                        border: `1px solid ${api.status === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                        color: api.status === 'active' ? 'var(--success)' : 'var(--danger)',
+                        padding: '2px 10px',
+                        borderRadius: '8px',
+                        fontWeight: '700'
+                      }}>
+                        {api.status === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                      </span>
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                      최근 동기화일: <strong>{api.lastUpdated}</strong> | 누적 수집 건수: <strong>{api.collectedCount?.toLocaleString()}건</strong>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    onClick={() => handleSyncApi(api.id, api.name)}
+                    disabled={isSyncing}
+                    style={{ padding: '10px 20px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    {isSyncing ? '🔄 동기화 중...' : '🔄 실시간 강제 동기화'}
+                  </Button>
+                </div>
+
+                {/* 2. 상세 수집 로그 & 리스트 영역 */}
+                <div style={{
+                  padding: '20px',
+                  background: 'rgba(255,255,255,0.01)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '750', color: 'var(--accent)' }}>
+                      📂 실시간 수집 내역 로그 (페이지: {api.pagination?.currentPage || 1} / {api.pagination?.totalPages || 1})
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      최근 동기화 시점 기준 (페이지당 10개씩 표시)
+                    </span>
+                  </div>
+
+                  {/* 수집 아이템 상세 매핑 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {Array.isArray(api.details) && api.details.length > 0 ? (
+                      api.details.map(det => (
+                        <div
+                          key={det.id}
+                          style={{
+                            padding: '12px 16px',
+                            background: 'rgba(255,255,255,0.01)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '0.82rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              {det.location || det.spotName || det.query || det.regionName || det.eventName}
+                            </strong>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                              결과값: {det.value || det.address || det.result || det.zoneType || det.eventPeriod}
+                            </span>
+                          </div>
+                          <span style={{
+                            fontSize: '0.72rem',
+                            color: det.state === '반려됨' ? 'var(--danger)' : det.state === '대기중' ? 'var(--warning)' : 'var(--success)',
+                            fontWeight: '700',
+                            background: det.state === '반려됨' ? 'rgba(214, 48, 49, 0.08)' : det.state === '대기중' ? 'rgba(241, 196, 15, 0.08)' : 'rgba(0, 184, 148, 0.08)',
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}>
+                            {det.state || "정상연동"}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                        수집 내역 로그가 존재하지 않습니다.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 📄 페이지네이션 네비게이션 UI */}
+                  {api.pagination && api.pagination.totalPages > 1 && (() => {
+                    const current = api.pagination.currentPage;
+                    const total = api.pagination.totalPages;
+                    const maxVisible = 5;
+                    let start = Math.max(1, current - Math.floor(maxVisible / 2));
+                    let end = Math.min(total, start + maxVisible - 1);
+                    if (end - start + 1 < maxVisible) {
+                      start = Math.max(1, end - maxVisible + 1);
+                    }
+
+                    return (
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '24px',
+                        paddingTop: '20px',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                        flexWrap: 'wrap'
+                      }}>
+                        <button
+                          disabled={current === 1}
+                          onClick={() => handlePageChange(api.id, 1)}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '8px',
+                            cursor: current === 1 ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          처음
+                        </button>
+
+                        <button
+                          disabled={current === 1}
+                          onClick={() => handlePageChange(api.id, current - 1)}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '8px',
+                            cursor: current === 1 ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          이전
+                        </button>
+                        
+                        {Array.from({ length: end - start + 1 }, (_, idx) => {
+                          const pNum = start + idx;
+                          const isCurrent = pNum === current;
+                          return (
+                            <button
+                              key={pNum}
+                              onClick={() => handlePageChange(api.id, pNum)}
+                              style={{
+                                width: '30px',
+                                height: '30px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.78rem',
+                                fontWeight: isCurrent ? 'bold' : 'normal',
+                                background: isCurrent ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
+                                color: isCurrent ? '#FFF' : 'var(--text-secondary)',
+                                border: isCurrent ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                boxShadow: isCurrent ? '0 0 10px rgba(108, 92, 231, 0.4)' : 'none'
+                              }}
+                            >
+                              {pNum}
+                            </button>
+                          );
+                        })}
+
+                        <button
+                          disabled={current === total}
+                          onClick={() => handlePageChange(api.id, current + 1)}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '8px',
+                            cursor: current === total ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          다음
+                        </button>
+
+                        <button
+                          disabled={current === total}
+                          onClick={() => handlePageChange(api.id, total)}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '8px',
+                            cursor: current === total ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          끝
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            );
+          })()}
+
         </div>
       </main>
+
+      {/* 🍞 토스트 팝업 */}
+      {toast.show && (
+        <div style={{
+          position: 'fixed',
+          bottom: '40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '14px 24px',
+          borderRadius: '16px',
+          background: toast.type === 'success' ? 'rgba(0, 184, 148, 0.95)' : toast.type === 'error' ? 'rgba(214, 48, 49, 0.95)' : 'rgba(9, 132, 227, 0.95)',
+          color: '#FFFFFF',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          zIndex: 10000,
+          fontSize: '0.88rem',
+          fontWeight: '700',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          pointerEvents: 'none'
+        }}>
+          <span>{toast.type === 'success' ? '✅' : toast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* 💫 탭 전환 호버 피드백 스타일 주입 */}
+      <style jsx global>{`
+        .tab-hover:hover {
+          background: rgba(255, 255, 255, 0.05) !important;
+          color: var(--text-primary) !important;
+          border-color: rgba(255, 255, 255, 0.15) !important;
+        }
+      `}</style>
     </div>
   );
 }

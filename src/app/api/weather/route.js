@@ -58,7 +58,7 @@ export async function GET(request) {
     address: '내 위치 주변'
   };
 
-  if (!serviceKey) {
+  if (!serviceKey || serviceKey.trim() === "" || serviceKey.includes("your-public-data-api-service-key")) {
     console.warn("⚠️ [Weather API] 기상청 서비스 키(KOREA_WEATHER_API_KEY)가 등록되지 않아 모의 날씨를 리턴합니다.");
     return NextResponse.json({ success: true, data: FALLBACK_WEATHER });
   }
@@ -98,7 +98,16 @@ export async function GET(request) {
     
     console.log(`📡 [Weather API] 기상청 API 호출 시작: baseDate=${baseDate}, baseTime=${baseTime}, nx=${nx}, ny=${ny}`);
     
-    const apiResponse = await fetch(targetUrl, { next: { revalidate: 300 } }); // 5분 캐싱
+    // 3. 기상청 초단기실황 조회 OpenAPI 호출 (안전한 타임아웃 3초 탑재)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const apiResponse = await fetch(targetUrl, { 
+      next: { revalidate: 300 },
+      signal: controller.signal
+    }); // 5분 캐싱
+    
+    clearTimeout(timeoutId);
     
     if (!apiResponse.ok) {
       throw new Error(`기상청 HTTP 통신 에러 (Status: ${apiResponse.status})`);

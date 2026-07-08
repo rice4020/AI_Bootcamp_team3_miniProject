@@ -1,0 +1,24 @@
+[
+  {
+    "id": "owner123",
+    "ownerUsername": "owner123",
+    "name": "여의도 한강공원 물빛광장",
+    "category": "skewer",
+    "lat": 37.21334467385763,
+    "lng": 126.95368902861397,
+    "status": "active",
+    "intro": "여의나루역 2번 출구 야시장 라인 안쪽 세번째 부스",
+    "menu": [
+      {
+        "name": "오리지널 핫도그",
+        "price": 4000
+      },
+      {
+        "name": "치즈 핫도그",
+        "price": 4500
+      }
+    ],
+    "stock": 30,
+    "waitingTeams": 0
+  }
+]

@@ -1,8 +1,13 @@
 import { neon } from '@neondatabase/serverless';
 import 'dotenv/config';
 
-// DB 주소가 없으면 모의 모드로 동작하도록 설정
-export const IS_MOCK_MODE = !process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === "";
+// DB 주소가 없거나 가짜 주소 플레이스홀더가 기입되어 있으면 모의(Mock) 모드로 동작하도록 설정
+const dbUrl = process.env.DATABASE_URL || "";
+export const IS_MOCK_MODE = 
+  !dbUrl || 
+  dbUrl.trim() === "" || 
+  dbUrl.includes("your-neon-hostname") || 
+  dbUrl.includes("username:password");
 
 if (IS_MOCK_MODE) {
   console.warn('⚠️  DATABASE_URL 환경변수가 없거나 비어있습니다. 모의(Mock) 데이터 모드로 동작합니다.');
