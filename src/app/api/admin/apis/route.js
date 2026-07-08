@@ -402,7 +402,7 @@ export async function GET(request) {
               COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
               COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
               COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
-            FROM legal_spots
+            FROM "Spot"
           `);
           stats.total = parseInt(countRes.rows[0].count) || 0;
           stats.approved = parseInt(countRes.rows[0].approved_count) || 0;
@@ -550,11 +550,11 @@ export async function GET(request) {
         const countRes = await dbPool.query(`
           SELECT 
             COUNT(*) as count, 
-            MAX(updated_at) as last_update,
+            MAX("updatedAt") as last_update,
             COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
             COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
             COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
-          FROM legal_spots
+          FROM "Spot"
         `);
         spotsCount = parseInt(countRes.rows[0].count) || 0;
         if (countRes.rows[0].last_update) {
@@ -569,30 +569,21 @@ export async function GET(request) {
         spotsTotalPages = Math.ceil(spotsCount / limit);
         const offset = (pageApi2 - 1) * limit;
 
-        // 상세 검수용 데이터 페이징 조회 적용 (위도, 경도 추가)
+        // 상세 검수용 데이터 페이징 조회 적용
         const listRes = await dbPool.query(
-          'SELECT id, name, rules, approved, lat, lng FROM legal_spots ORDER BY updated_at DESC, id ASC LIMIT $1 OFFSET $2',
+          'SELECT id, name, address, approved, latitude, longitude FROM "Spot" ORDER BY "updatedAt" DESC, id ASC LIMIT $1 OFFSET $2',
           [limit, offset]
         );
 
         if (listRes.rows.length > 0) {
           spotsDetails = listRes.rows.map(row => {
-            let address = "주소 정보 없음";
-            if (row.rules) {
-              const addrMatch = row.rules.match(/소재지:\s*(.*)/);
-              if (addrMatch && addrMatch[1]) {
-                address = addrMatch[1].split('|')[0].trim();
-              } else {
-                address = row.rules.substring(0, 30) + "...";
-              }
-            }
             return {
               id: row.id,
               spotName: row.name,
-              address: address,
-              lat: row.lat ? parseFloat(row.lat) : null,
-              lng: row.lng ? parseFloat(row.lng) : null,
-              state: row.approved === false ? "반려됨" : "승인됨"
+              address: row.address || "주소 정보 없음",
+              lat: row.latitude ? parseFloat(row.latitude) : null,
+              lng: row.longitude ? parseFloat(row.longitude) : null,
+              state: row.approved === true ? "승인됨" : (row.approved === false ? "반려됨" : "대기중")
             };
           });
         }
@@ -878,23 +869,12 @@ export async function POST(request) {
     const dbPool = getDbPool();
     const hasDb = !IS_MOCK_MODE && dbPool;
 
-    // 💡 Neon DB 셋업 편의를 위해 테이블이 없으면 자동 생성
+    // 💡 Neon DB "Spot" 테이블 승인 컬럼 방어적 확인 및 자동 추가
     if (hasDb) {
       try {
-        await dbPool.query(`
-          CREATE TABLE IF NOT EXISTS legal_spots (
-            id VARCHAR(100) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            lat NUMERIC(10, 8),
-            lng NUMERIC(11, 8),
-            rules TEXT,
-            approved BOOLEAN DEFAULT TRUE,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          );
-        `);
-        await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
+        await dbPool.query('ALTER TABLE "Spot" ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
       } catch (tableErr) {
-        console.error("Neon DB 테이블 자동 생성 실패:", tableErr.message);
+        console.error("Neon DB Spot 테이블 컬럼 검사 실패:", tableErr.message);
       }
     }
 
@@ -1000,16 +980,25 @@ export async function POST(request) {
           await dbPool.query('BEGIN');
           try {
             for (const spot of FALLBACK_LEGAL_SPOTS) {
+              let address = "주소 정보 없음";
+              if (spot.rules) {
+                const addrMatch = spot.rules.match(/소재지:\s*(.*)/);
+                if (addrMatch && addrMatch[1]) {
+                  address = addrMatch[1].split('|')[0].trim();
+                }
+              }
               await dbPool.query(`
-                INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO "Spot" (id, name, address, latitude, longitude, "rulesDescription", approved, "updatedAt", "createdAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                 ON CONFLICT (id) DO UPDATE SET
                   name = EXCLUDED.name,
-                  lat = EXCLUDED.lat,
-                  lng = EXCLUDED.lng,
-                  rules = EXCLUDED.rules,
-                  updated_at = EXCLUDED.updated_at
-              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, getKstDate()]);
+                  address = EXCLUDED.address,
+                  latitude = EXCLUDED.latitude,
+                  longitude = EXCLUDED.longitude,
+                  "rulesDescription" = EXCLUDED."rulesDescription",
+                  approved = EXCLUDED.approved,
+                  "updatedAt" = EXCLUDED."updatedAt"
+              `, [spot.id, spot.name, address, spot.lat, spot.lng, spot.rules, true, getKstDate()]);
             }
 
             const cities = ["서울특별시", "경기도", "인천광역시", "강원특별자치도", "충청남도", "충청북도", "대전광역시", "전북특별자치도", "전라남도", "광주광역시", "경상북도", "경상남도", "대구광역시", "부산광역시", "울산광역시", "제주특별자치도"];
@@ -1050,6 +1039,7 @@ export async function POST(request) {
                 chunk.push({
                   id: `bulk-spot-${j}`,
                   name: `푸드트럭 허가구역 (${district})`,
+                  address,
                   lat,
                   lng,
                   rules: `합법 점용 지정 구역 | 관리기관: 지자체 관리기관 | 운영시간: 09:00 ~ 21:00 | 소재지: ${address}`,
@@ -1060,21 +1050,22 @@ export async function POST(request) {
               const valuePlaceholders = [];
               const queryParams = [];
               chunk.forEach((spot, idx) => {
-                const offset = idx * 7;
-                valuePlaceholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`);
-                queryParams.push(spot.id, spot.name, spot.lat, spot.lng, spot.rules, spot.approved, getKstDate());
+                const offset = idx * 8;
+                valuePlaceholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, NOW())`);
+                queryParams.push(spot.id, spot.name, spot.address, spot.lat, spot.lng, spot.rules, spot.approved, getKstDate());
               });
 
               const sql = `
-                INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
+                INSERT INTO "Spot" (id, name, address, latitude, longitude, "rulesDescription", approved, "updatedAt", "createdAt")
                 VALUES ${valuePlaceholders.join(', ')}
                 ON CONFLICT (id) DO UPDATE SET
                   name = EXCLUDED.name,
-                  lat = EXCLUDED.lat,
-                  lng = EXCLUDED.lng,
-                  rules = EXCLUDED.rules,
+                  address = EXCLUDED.address,
+                  latitude = EXCLUDED.latitude,
+                  longitude = EXCLUDED.longitude,
+                  "rulesDescription" = EXCLUDED."rulesDescription",
                   approved = EXCLUDED.approved,
-                  updated_at = EXCLUDED.updated_at
+                  "updatedAt" = EXCLUDED."updatedAt"
               `;
               await dbPool.query(sql, queryParams);
             }
@@ -1124,15 +1115,16 @@ export async function POST(request) {
                 const id = `gov-spot-${i}`;
 
                 await dbPool.query(`
-                  INSERT INTO legal_spots (id, name, lat, lng, rules, updated_at)
-                  VALUES ($1, $2, $3, $4, $5, $6)
+                  INSERT INTO "Spot" (id, name, address, latitude, longitude, "rulesDescription", approved, "updatedAt", "createdAt")
+                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                   ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name,
-                    lat = EXCLUDED.lat,
-                    lng = EXCLUDED.lng,
-                    rules = EXCLUDED.rules,
-                    updated_at = EXCLUDED.updated_at
-                `, [id, name, lat, lng, rulesText, getKstDate()]);
+                    address = EXCLUDED.address,
+                    latitude = EXCLUDED.latitude,
+                    longitude = EXCLUDED.longitude,
+                    "rulesDescription" = EXCLUDED."rulesDescription",
+                    "updatedAt" = EXCLUDED."updatedAt"
+                `, [id, name, address, lat, lng, rulesText, true, getKstDate()]);
               }
             }
             await dbPool.query('COMMIT');
@@ -1330,9 +1322,9 @@ export async function POST(request) {
       }
 
       try {
-        // Neon DB 상의 legal_spots 테이블에서 해당 스팟의 approved 컬럼을 업데이트
+        // Neon DB 상의 "Spot" 테이블에서 해당 스팟의 approved 컬럼을 업데이트
         const updateRes = await dbPool.query(
-          'UPDATE legal_spots SET approved = $1, updated_at = $2 WHERE id = $3',
+          'UPDATE "Spot" SET approved = $1, "updatedAt" = $2 WHERE id = $3',
           [isApprove, getKstDate(), detailId]
         );
 
