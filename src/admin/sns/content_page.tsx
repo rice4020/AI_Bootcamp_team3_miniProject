@@ -408,7 +408,7 @@ export default function AdminContentPage() {
 
             {/* ☔ 우측: 실시간 연동 날씨 현황 */}
             <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
                   ☔ 실시간 연동 날씨 현황
                 </h3>
