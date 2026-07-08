@@ -125,7 +125,37 @@ export default function UserMainPage() {
     // OSM Nominatim API 호출 (네이버 API 실패 시 Fallback)
     const tryOsmSearch = async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+        // OSM 검색 정확도 향상을 위한 일반 지명 치환
+        let osmQuery = searchQuery;
+        const replacements = {
+          "홍대역": "홍대입구역",
+          "홍대": "홍익대학교",
+          "건대역": "건대입구역",
+          "건대": "건국대학교",
+          "강남역": "강남역", // 강남역은 그대로
+          "강남": "강남역",
+          "잠실": "잠실역",
+          "신촌": "신촌역",
+          "이태원": "이태원역",
+          "여의도": "여의도역",
+        };
+        // 정확히 일치하거나 포함하는 경우 치환 (가장 긴 단어부터 처리할 수 있으나 여기선 단순 치환)
+        if (replacements[osmQuery]) {
+          osmQuery = replacements[osmQuery];
+        } else {
+          for (const [key, value] of Object.entries(replacements)) {
+            if (osmQuery.includes(key)) {
+              osmQuery = osmQuery.replace(key, value);
+              break; // 한 번 치환되면 종료
+            }
+          }
+        }
+
+        const query = encodeURIComponent(osmQuery + ' 대한민국');
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=kr&accept-language=ko`,
+          { headers: { 'User-Agent': 'YojariApp/1.0' } }
+        );
         const data = await res.json();
         
         if (data && data.length > 0) {
@@ -174,6 +204,34 @@ export default function UserMainPage() {
       }
       if (leafletMapInstanceRef.current && window.L) {
         leafletMapInstanceRef.current.setView([finalLat, finalLng], 14);
+      }
+    }
+  };
+
+  // 🔍 [전체 보기] 영업중인 전체 트럭을 한 화면에 볼 수 있도록 지도 영역 재조정
+  const handleShowAllTrucks = () => {
+    const activeTrucks = trucksList.filter(t => t.status === 'active');
+    if (activeTrucks.length === 0) return;
+
+    if (window.naver && window.naver.maps && naverMapInstanceRef.current && !isMapError) {
+      const bounds = new window.naver.maps.LatLngBounds();
+      activeTrucks.forEach(t => {
+        bounds.extend(new window.naver.maps.LatLng(t.lat, t.lng));
+      });
+      if (activeTrucks.length === 1) {
+        naverMapInstanceRef.current.setCenter(bounds.getCenter());
+        naverMapInstanceRef.current.setZoom(14);
+      } else {
+        // 모든 트럭이 보이도록 지도 자동 축소 및 이동 (여백 50px)
+        naverMapInstanceRef.current.fitBounds(bounds, { margin: 50 });
+      }
+    } else if (window.L && leafletMapInstanceRef.current && isMapError) {
+      const bounds = window.L.latLngBounds();
+      activeTrucks.forEach(t => bounds.extend([t.lat, t.lng]));
+      if (activeTrucks.length === 1) {
+        leafletMapInstanceRef.current.setView(bounds.getCenter(), 14);
+      } else {
+        leafletMapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
       }
     }
   };
@@ -377,9 +435,11 @@ export default function UserMainPage() {
         if (t.category && !defaultIds.includes(t.category)) {
           const isExist = dynamicCats.some(c => c.id === t.category);
           if (!isExist) {
+            const parts = t.category.split('-');
+            const labelStr = parts.length === 2 ? `${parts[0]} (${parts[1]}) 🍴` : `${t.category} 🍴`;
             dynamicCats.push({
               id: t.category,
-              label: `${t.category} 🍴`
+              label: labelStr
             });
           }
         }
@@ -911,7 +971,12 @@ export default function UserMainPage() {
             {categoriesList.map(cat => (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  if (cat.id === 'all') {
+                    handleShowAllTrucks();
+                  }
+                }}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '20px',
@@ -1139,19 +1204,7 @@ export default function UserMainPage() {
                   <p style={{ fontWeight: '800', fontSize: '1rem', margin: 0, color: '#1a1a2e' }}>
                     {selectedTruck.name}
                   </p>
-                  {!selectedTruck.isDb && (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: '800',
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                      background: 'rgba(9, 132, 227, 0.1)',
-                      color: '#0984e3',
-                      border: '1px solid rgba(9, 132, 227, 0.2)'
-                    }}>
-                      임시 더미데이터 🧪
-                    </span>
-                  )}
+
                 </div>
                 <span style={{
                   fontSize: '0.7rem',
@@ -1193,28 +1246,7 @@ export default function UserMainPage() {
               </p>
             )}
 
-            {/* 재고 / 대기 정보 */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div style={{
-                flex: 1, background: '#F8F9FA', borderRadius: '10px',
-                padding: '8px 10px', textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '0.7rem', color: '#888', margin: '0 0 2px', fontWeight: '600' }}>실시간 재고</p>
-                <p style={{
-                  fontSize: '1rem', fontWeight: '800', margin: 0,
-                  color: selectedTruck.stock > 10 ? '#2d3436' : '#D63031',
-                }}>{selectedTruck.stock}개 남음</p>
-              </div>
-              <div style={{
-                flex: 1, background: '#F8F9FA', borderRadius: '10px',
-                padding: '8px 10px', textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '0.7rem', color: '#888', margin: '0 0 2px', fontWeight: '600' }}>현재 대기</p>
-                <p style={{ fontSize: '1rem', fontWeight: '800', margin: 0, color: '#FF6B35' }}>
-                  {selectedTruck.waitingTeams} 팀
-                </p>
-              </div>
-            </div>
+
 
             {/* 메뉴 목록 (최대 3개) */}
             {selectedTruck.menu && selectedTruck.menu.length > 0 && (
@@ -1312,23 +1344,7 @@ export default function UserMainPage() {
               )}
             </div>
 
-            {/* 길찾기 버튼 */}
-            <button
-              onClick={() => window.open(getNaverMapDirectionUrl(selectedTruck), '_blank')}
-              style={{
-                width: '100%',
-                padding: '11px',
-                background: 'linear-gradient(135deg, #FF6B35 0%, #e84393 100%)',
-                color: '#FFF',
-                border: 'none',
-                borderRadius: '12px',
-                fontWeight: '700',
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-              }}
-            >
-              🧭 네이버 지도로 길찾기
-            </button>
+
           </div>
         </div>
       )}

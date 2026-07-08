@@ -8,7 +8,7 @@ import { getCurrentSession, getTruckInfo, updateTruckInfo, logoutUser, initDb } 
 
 // 🎨 AI 톤앤매너 모의 템플릿 정의 (API Key 없을 때 Fallback으로 작동)
 const TONE_TEMPLATES = {
-  witty: (truck, loc) => `🤪 [${truck.name}] 오늘 강림!! 
+  witty: (truck, loc, keywords) => `🤪 [${truck.name}] 오늘 강림!! 
 📍 위치: ${loc}
 
 ${truck.intro}
@@ -16,21 +16,20 @@ ${truck.intro}
 오늘 메뉴 라인업 미쳤습니다.. 침샘 자극 주의! 🤤
 ${truck.menu.map(m => `👉 ${m.name}: ${m.price.toLocaleString()}원`).join('\n')}
 
-남은 재고는 단 ${truck.stock}개! 🚨 
-늦게 오면 품절각! 서둘러서 무브무브! 💨
+${keywords ? `💡 쥔장 추천 키워드: ${keywords}\n` : ''}재료 소진되기 전에 서둘러서 무브무브! 💨
 
 #푸드트럭 #존맛탱 #실시간맛집 #인스타푸드 #JMT #오늘뭐먹지`,
 
-  emotional: (truck, loc) => `🌸 은은한 바람이 부는 오늘, 
+  emotional: (truck, loc, keywords) => `🌸 은은한 바람이 부는 오늘, 
 [${truck.name}]이 사장님의 일상에 작은 따뜻함을 배달하러 왔습니다.
 소중한 하루 끝에 달콤하고 맛있는 위로 한 입 어떨까요? ✨
 ${truck.menu.map(m => `• ${m.name} (${m.price.toLocaleString()}원)`).join('\n')}
 
-오늘 오늘도 정성 가득 담아 조리해 둘게요. 조심히 오세요. 💛
+${keywords ? `✨ 오늘 저희 트럭은요: ${keywords}\n` : ''}오늘도 정성 가득 담아 조리해 둘게요. 조심히 오세요. 💛
 
 #푸드트럭 #감성맛집 #감성스타그램 #따뜻한위로 #골목맛집 #힐링푸드`,
 
-  polite: (truck, loc) => `💼 안녕하십니까, [${truck.name}] 대표 사장님입니다.
+  polite: (truck, loc, keywords) => `💼 안녕하십니까, [${truck.name}] 대표 사장님입니다.
 금일 푸드트럭 운영 및 판매 정보 관련 공지드립니다.
 📍 위치: ${loc}
 
@@ -39,8 +38,7 @@ ${truck.intro}
 금일 준비한 고품질 재료의 판매 단가를 안내해 드립니다.
 ${truck.menu.map(m => `- ${m.name}: ${m.price.toLocaleString()}원`).join('\n')}
 
-- 금일 잔여 준비량: 약 ${truck.stock}개
-항상 청결하고 바른 식재료 사용을 약속드리겠습니다. 감사합니다.
+${keywords ? `- 금일 강조 공지: ${keywords}\n` : ''}항상 청결하고 바른 식재료 사용을 약속드리겠습니다. 감사합니다.
 
 #푸드트럭 #영업공지 #공식계정 #바른먹거리 #청결맛집 #가족간식`
 };
@@ -51,6 +49,7 @@ export default function SnsManagementPage() {
   const [session, setSession] = useState(null);
   const [truck, setTruck] = useState(null);
   const [locationName, setLocationName] = useState('서울시청 광장 앞');
+  const [keywords, setKeywords] = useState(''); // 최대 3개 추천 키워드
 
   // AI 톤앤매너 선택 State
   const [selectedTone, setSelectedTone] = useState('witty');
@@ -109,7 +108,9 @@ export default function SnsManagementPage() {
           truckName: truck.name,
           intro: truck.intro,
           menus: truck.menu,
-          locationName: locationName
+          locationName: locationName,
+          keywords: keywords,
+          tone: selectedTone
         }),
       });
 
@@ -118,7 +119,7 @@ export default function SnsManagementPage() {
       if (data.success) {
         // 실제 Claude API Key가 로컬에 없을 때는 톤 선택 기능에 맞춘 Fallback 템플릿 사용
         if (data.isMock) {
-          const mockText = TONE_TEMPLATES[selectedTone](truck, locationName);
+          const mockText = TONE_TEMPLATES[selectedTone](truck, locationName, keywords);
           setGeneratedText(mockText);
           // 생성된 광고문구를 트럭 데이터에 저장 → 지도 팝업에서 표시
           updateTruckInfo(session.username, { ...truck, snsText: mockText });
@@ -134,7 +135,7 @@ export default function SnsManagementPage() {
     } catch (err) {
       // 에러 발생 시 완전 로컬 생성 템플릿으로 우회 지원
       console.warn("API 연동 에러로 로컬 템플릿을 실행합니다:", err);
-      const localText = TONE_TEMPLATES[selectedTone](truck, locationName);
+      const localText = TONE_TEMPLATES[selectedTone](truck, locationName, keywords);
       setGeneratedText(localText);
       // 에러 우회 시에도 광고문구 저장
       updateTruckInfo(session.username, { ...truck, snsText: localText });
@@ -201,6 +202,36 @@ export default function SnsManagementPage() {
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
                   placeholder="예: 여의도 한강공원 입구 앞"
+                />
+              </div>
+
+              {/* 판매 중인 메뉴 (읽기 전용 표시) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label className="input-label">현재 판매 중인 메뉴</label>
+                <div style={{ 
+                  background: 'rgba(0,0,0,0.02)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '12px', 
+                  padding: '14px 16px',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-secondary)'
+                }}>
+                  {truck.menu && truck.menu.length > 0 
+                    ? truck.menu.map(m => `${m.name}(${m.price.toLocaleString()}원)`).join(', ')
+                    : '등록된 메뉴가 없습니다.'
+                  }
+                </div>
+              </div>
+
+              {/* 강조 키워드 기입 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label className="input-label">강조 추천 키워드 (최대 3개)</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                  placeholder="예: 떡볶이맛집, 웨이팅필수, 한정수량"
                 />
               </div>
 

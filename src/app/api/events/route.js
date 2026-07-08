@@ -120,6 +120,30 @@ const FALLBACK_EVENTS = [
     source: "전국문화축제 표준데이터"
   },
   {
+    id: "mock-sns-1",
+    name: "성수동 팝업스토어 로드",
+    location: "서울 성동구 연무장길",
+    latitude: 37.5446,
+    longitude: 127.0566,
+    startDate: "2026-07-05",
+    endDate: "2026-07-20",
+    description: "인스타그램 핫플 해시태그 기반으로 수집된 성수동 인기 팝업스토어 밀집 구역입니다.",
+    source: "인스타그램 핫플 크롤링",
+    sourceTable: "SnsExtraction"
+  },
+  {
+    id: "mock-sns-2",
+    name: "잠실 석촌호수 디저트 카페거리",
+    location: "서울 송파구 석촌호수로",
+    latitude: 37.5088,
+    longitude: 127.1062,
+    startDate: "2026-07-01",
+    endDate: "2026-10-31",
+    description: "트위터 실시간 트렌드에서 가장 많이 언급된 석촌호수 인근 신상 카페거리 투어",
+    source: "트위터 실시간 트렌드",
+    sourceTable: "SnsExtraction"
+  },
+  {
     id: "mock-evt-10",
     name: "강남 푸르지오 아파트 입주민 여름 대축제",
     location: "서울 서초구 사평대로 290",
@@ -158,18 +182,22 @@ export async function GET(request) {
   // 1. 가상 모드(Mock Mode) 체크
   if (IS_MOCK_MODE) {
     console.log("ℹ️ [API/events] DATABASE_URL이 없어 가상(Mock) 행사 목록을 계산합니다.");
+    const today = new Date().toISOString().split('T')[0];
+    const upcomingEvents = FALLBACK_EVENTS.filter(evt => evt.endDate >= today);
     const nearby = (radius && lat && lng)
-      ? FALLBACK_EVENTS.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
-      : FALLBACK_EVENTS;
+      ? upcomingEvents.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
+      : upcomingEvents;
     return NextResponse.json({ success: true, isMock: true, data: nearby });
   }
 
   const dbPool = getDbPool();
   if (!dbPool) {
     console.warn("⚠️ [API/events] DB 커넥션 획득 실패. 예비 가상 데이터를 제공합니다.");
+    const today = new Date().toISOString().split('T')[0];
+    const upcomingEvents = FALLBACK_EVENTS.filter(evt => evt.endDate >= today);
     const nearby = (radius && lat && lng)
-      ? FALLBACK_EVENTS.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
-      : FALLBACK_EVENTS;
+      ? upcomingEvents.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
+      : upcomingEvents;
     return NextResponse.json({ success: true, isMock: true, data: nearby });
   }
 
@@ -178,39 +206,42 @@ export async function GET(request) {
     let dbEvents = [];
     try {
       const res = await dbPool.query(`
-        SELECT
-          id,
-          title,
-          location,
-          latitude,
-          longitude,
-          "startDate" AS start_date,
-          "endDate"   AS end_date,
-          scale,
-          description,
-          'Event' AS source_table
-        FROM "Event"
+        SELECT * FROM (
+          SELECT
+            id,
+            title,
+            location,
+            latitude,
+            longitude,
+            "startDate" AS start_date,
+            "endDate"   AS end_date,
+            scale,
+            description,
+            'Event' AS source_table
+          FROM "Event"
+          WHERE "endDate" >= CURRENT_DATE
 
-        UNION ALL
+          UNION ALL
 
-        SELECT
-          id,
-          title,
-          location,
-          latitude,
-          longitude,
-          "startDate" AS start_date,
-          "endDate"   AS end_date,
-          scale,
-          description,
-          'SnsExtraction' AS source_table
-        FROM "SnsExtraction"
-
+          SELECT
+            id,
+            title,
+            location,
+            latitude,
+            longitude,
+            "startDate" AS start_date,
+            "endDate"   AS end_date,
+            scale,
+            description,
+            'SnsExtraction' AS source_table
+          FROM "SnsExtraction"
+          WHERE "endDate" >= CURRENT_DATE
+        ) sub
         ORDER BY
           -- 1순위: 진행 중인 행사 (오늘이 start~end 사이) 먼저
           CASE WHEN start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE THEN 0 ELSE 1 END,
           -- 2순위: 오늘로부터 가장 가까운 날짜 순
-          ABS(start_date - CURRENT_DATE) ASC NULLS LAST
+          ABS(DATE(start_date) - CURRENT_DATE) ASC NULLS LAST
       `);
       dbEvents = res.rows;
       console.log(`✅ [API/events] Event(${res.rows.filter(r=>r.source_table==='Event').length}건) + SnsExtraction(${res.rows.filter(r=>r.source_table==='SnsExtraction').length}건) 통합 로드 성공.`);
@@ -230,6 +261,7 @@ export async function GET(request) {
             description,
             'Event' AS source_table
           FROM "Event"
+          WHERE "endDate" >= CURRENT_DATE
           ORDER BY
             CASE WHEN "startDate" <= CURRENT_DATE AND "endDate" >= CURRENT_DATE THEN 0 ELSE 1 END,
             ABS("startDate" - CURRENT_DATE) ASC NULLS LAST
@@ -240,6 +272,25 @@ export async function GET(request) {
         console.warn(`❌ [API/events] 모든 행사 테이블 쿼리 실패:`, e2.message);
         throw e2;
       }
+    }
+
+    // SNS 데이터가 없다면 더미 추가
+    const hasSnsData = dbEvents.some(r => r.source_table === 'SnsExtraction');
+    if (!hasSnsData) {
+      console.log("ℹ️ [API/events] SnsExtraction 데이터가 없어 더미 SNS 데이터를 추가합니다.");
+      const mockSns = FALLBACK_EVENTS.filter(evt => evt.sourceTable === 'SnsExtraction');
+      dbEvents = [...dbEvents, ...mockSns.map(m => ({
+        id: m.id,
+        title: m.name,
+        location: m.location,
+        latitude: m.latitude,
+        longitude: m.longitude,
+        start_date: m.startDate,
+        end_date: m.endDate,
+        scale: null,
+        description: m.description,
+        source_table: 'SnsExtraction'
+      }))];
     }
 
     // 3. 불러온 DB 행사 목록에 대하여 반경 연산 필터링 실행
@@ -275,9 +326,11 @@ export async function GET(request) {
 
   } catch (dbError) {
     console.warn("⚠️ [API/events] DB 오류로 인해 예비 데이터를 필터링하여 출력합니다:", dbError.message);
+    const today = new Date().toISOString().split('T')[0];
+    const upcomingEvents = FALLBACK_EVENTS.filter(evt => evt.endDate >= today);
     const nearby = (radius && lat && lng)
-      ? FALLBACK_EVENTS.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
-      : FALLBACK_EVENTS;
+      ? upcomingEvents.filter(evt => getDistanceKm(lat, lng, evt.latitude, evt.longitude) <= radius)
+      : upcomingEvents;
     return NextResponse.json({ success: true, isMock: true, data: nearby });
   }
 }

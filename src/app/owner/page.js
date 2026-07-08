@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
+
 import Navbar from '../../components/Navbar';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
+import GlobalAlertModal from '@/components/GlobalAlertModal';
 import { getCurrentSession, getTruckInfo, updateTruckInfo, logoutUser, initDb } from '../../utils/authDb';
 import OwnerDashboardPage from '@/admin/truck/owner_dashboard';
 
@@ -339,6 +341,10 @@ function OwnerMapContent() {
   // 쿼리 파라미터 좌표 읽기 (스팟 추천 페이지로부터 연동)
   const queryLat = searchParams.get('lat');
   const queryLng = searchParams.get('lng');
+  
+  const myTruckLat = searchParams.get('myTruckLat');
+  const myTruckLng = searchParams.get('myTruckLng');
+  const mySpotName = searchParams.get('mySpotName');
 
   const [session, setSession] = useState(null);
   const [truck, setTruck] = useState(null);
@@ -357,6 +363,8 @@ function OwnerMapContent() {
   const [itemType, setItemType] = useState(null); 
   // 리스트에서 클릭한 스팟 마커 강조 관리를 위한 상태
   const [highlightedSpotId, setHighlightedSpotId] = useState(null);
+  const [highlightedEventId, setHighlightedEventId] = useState(null);
+  const [pushNotification, setPushNotification] = useState(null);
   
   // AI 광고 생성 관련 상태
   const [isGeneratingAds, setIsGeneratingAds] = useState(false);
@@ -365,8 +373,9 @@ function OwnerMapContent() {
   const [isPushingAd, setIsPushingAd] = useState(false);
 
   // URL 쿼리 파라미터 안전 파싱 (NaN 방지)
-  const safeLat = (queryLat && queryLat !== "undefined" && !isNaN(parseFloat(queryLat))) ? parseFloat(queryLat) : 37.5665;
-  const safeLng = (queryLng && queryLng !== "undefined" && !isNaN(parseFloat(queryLng))) ? parseFloat(queryLng) : 126.9780;
+  const parseSafe = (val, fallback) => (val && val !== "undefined" && !isNaN(parseFloat(val))) ? parseFloat(val) : fallback;
+  const safeLat = myTruckLat ? parseSafe(myTruckLat, 37.5665) : parseSafe(queryLat, 37.5665);
+  const safeLng = myTruckLng ? parseSafe(myTruckLng, 126.9780) : parseSafe(queryLng, 126.9780);
 
   // 지도 관련
   const [myLocation, setMyLocation] = useState({ lat: safeLat, lng: safeLng });
@@ -448,8 +457,33 @@ function OwnerMapContent() {
     }
 
     try {
+      // OSM 검색 정확도 향상을 위한 일반 지명 치환
+      let osmQuery = searchQuery;
+      const replacements = {
+        "홍대역": "홍대입구역",
+        "홍대": "홍익대학교",
+        "건대역": "건대입구역",
+        "건대": "건국대학교",
+        "강남역": "강남역",
+        "강남": "강남역",
+        "잠실": "잠실역",
+        "신촌": "신촌역",
+        "이태원": "이태원역",
+        "여의도": "여의도역",
+      };
+      if (replacements[osmQuery]) {
+        osmQuery = replacements[osmQuery];
+      } else {
+        for (const [key, value] of Object.entries(replacements)) {
+          if (osmQuery.includes(key)) {
+            osmQuery = osmQuery.replace(key, value);
+            break;
+          }
+        }
+      }
+
       // 한국 내 검색으로 범위 제한 (countrycodes=kr)
-      const query = encodeURIComponent(searchQuery + ' 대한민국');
+      const query = encodeURIComponent(osmQuery + ' 대한민국');
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=kr&accept-language=ko`,
         { headers: { 'User-Agent': 'YojariApp/1.0' } }
@@ -691,7 +725,7 @@ function OwnerMapContent() {
     setTruck(truckData);
 
     // Geolocation 연동 (쿼리 파라미터가 없을 때만 현재 위치 감지)
-    if (!queryLat && !queryLng && navigator.geolocation) {
+    if (!queryLat && !queryLng && !myTruckLat && !myTruckLng && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((position) => {
         const coords = {
           lat: position.coords.latitude,
@@ -708,7 +742,7 @@ function OwnerMapContent() {
         }
       });
     }
-  }, [queryLat, queryLng]);
+  }, [queryLat, queryLng, myTruckLat, myTruckLng]);
 
   // 1.8 ⭕ 네이버 지도 이동 중심 기반 반경 원 그리기 헬퍼
   const drawNaverRadiusCircle = () => {
@@ -806,7 +840,7 @@ function OwnerMapContent() {
         overlaysRef.current = [];
       }
     };
-  }, [showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation, highlightedSpotId]);
+  }, [showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation, highlightedSpotId, highlightedEventId]);
 
   // 2.5 오픈스트리트맵 (Leaflet) 예비 지도 초기화 및 레이어 데이터 렌더링
   useEffect(() => {
@@ -850,7 +884,7 @@ function OwnerMapContent() {
         leafletMarkersRef.current = [];
       }
     };
-  }, [isMapError, isLeafletLoaded, showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation, highlightedSpotId]);
+  }, [isMapError, isLeafletLoaded, showSpots, showEvents, showWeather, truck, legalSpotsList, searchRadius, myLocation, highlightedSpotId, highlightedEventId]);
 
 
   // 2.9 📏 두 좌표 간의 거리 계산 (Haversine 공식, 단위: 미터)
@@ -973,7 +1007,7 @@ function OwnerMapContent() {
     }
 
     // B. 내 트럭 마커 그리기 (영업 중인 상태 active 일 때만 지도 상에 🚚 마커를 노출합니다)
-    if (truck && truck.status === 'active') {
+    if (truck && truck.status === 'active' && !(myTruckLat && myTruckLng)) {
       const isOnline = true;
 
       // 네이버 지도는 icon.content에 HTML 문자열을 넣어 커스텀 마커를 만듦
@@ -1017,6 +1051,70 @@ function OwnerMapContent() {
         }
       });
       overlaysRef.current.push(myMarker);
+    }
+
+    // B-2. URL에서 '여기서 영업예정'으로 넘어온 내 트럭 가상 마커 그리기
+    if (myTruckLat && myTruckLng) {
+      const bounceStyleId = 'truck-bounce-style';
+      if (!document.getElementById(bounceStyleId)) {
+        const style = document.createElement('style');
+        style.id = bounceStyleId;
+        style.innerHTML = `
+          @keyframes bounceTruck {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-8px); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
+      const isActive = truck && truck.status === 'active';
+      const bgColor = isActive ? '#00b894' : '#ff4757';
+      const shadowColor = isActive ? 'rgba(0, 184, 148, 0.8)' : 'rgba(255, 71, 87, 0.8)';
+      const textLabel = isActive ? '영업개시' : '영업예정';
+
+      const myTruckHtml = `
+        <div style="
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: ${bgColor};
+          border: 4px solid #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 20px ${shadowColor};
+          position: relative;
+          animation: bounceTruck 0.7s infinite alternate ease-in-out;
+        ">
+          <span style="font-size: 1.8rem;">🚚</span>
+          <span style="
+            position: absolute;
+            bottom: -12px;
+            background: ${bgColor};
+            color: white;
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 10px rgba(0,0,0, 0.1);
+          ">${textLabel}</span>
+        </div>
+      `;
+
+      const scheduledMarker = new window.naver.maps.Marker({
+        position: new window.naver.maps.LatLng(parseFloat(myTruckLat), parseFloat(myTruckLng)),
+        map: naverMapInstanceRef.current,
+        zIndex: 10000,
+        icon: {
+          content: myTruckHtml,
+          size: new window.naver.maps.Size(56, 68),
+          anchor: new window.naver.maps.Point(28, 34)
+        }
+      });
+      overlaysRef.current.push(scheduledMarker);
     }
 
     // C. 합법 스팟 레이어 렌더링 (초록 🏛️ 아이콘)
@@ -1102,20 +1200,24 @@ function OwnerMapContent() {
           const dist = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, ev.lat, ev.lng);
           if (dist > searchRadius) return; // 반경 바깥이면 제외
         }
+        const isHighlighted = ev.id === highlightedEventId;
+        const pinColor = isHighlighted ? '#e84393' : '#9c88ff';
+        const shadowColor = isHighlighted ? 'rgba(232, 67, 147, 0.65)' : 'rgba(156, 136, 255, 0.45)';
 
         const evHtml = `
           <div style="
             position: relative;
             width: 54px;
             height: 54px;
-            background: #9c88ff; /* 예쁜 이벤트용 보라색 핀 */
+            background: ${pinColor};
             border-radius: 50% 50% 50% 0;
             transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 5px 15px rgba(156, 136, 255, 0.45);
+            box-shadow: 0 5px 15px ${shadowColor};
             border: 2.5px solid #FFFFFF;
+            ${isHighlighted ? 'animation: pulse 1.5s infinite;' : ''}
           ">
             <div style="
               width: 38px;
@@ -1336,19 +1438,24 @@ function OwnerMapContent() {
           if (dist > searchRadius) return;
         }
 
+        const isHighlighted = ev.id === highlightedEventId;
+        const pinColor = isHighlighted ? '#e84393' : '#9c88ff';
+        const shadowColor = isHighlighted ? 'rgba(232, 67, 147, 0.65)' : 'rgba(156, 136, 255, 0.45)';
+
         const evHtml = `
           <div style="
             position: relative;
             width: 54px;
             height: 54px;
-            background: #9c88ff; /* 예쁜 이벤트용 보라색 핀 */
+            background: ${pinColor};
             border-radius: 50% 50% 50% 0;
             transform: rotate(-45deg);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 5px 15px rgba(156, 136, 255, 0.45);
+            box-shadow: 0 5px 15px ${shadowColor};
             border: 2.5px solid #FFFFFF;
+            ${isHighlighted ? 'animation: pulse 1.5s infinite;' : ''}
           ">
             <div style="
               width: 38px;
@@ -1406,7 +1513,29 @@ function OwnerMapContent() {
     const newStatus = truck.status === 'active' ? 'prepare' : 'active';
     
     if (newStatus === 'active') {
-      if (navigator.geolocation) {
+      // 🟢 [수정] URL에 영업예정 스팟 정보(myTruckLat)가 있다면, 해당 위치로 즉시 영업 개시
+      if (myTruckLat && myTruckLng) {
+        const updated = {
+          ...truck,
+          status: 'active',
+          lat: parseFloat(myTruckLat),
+          lng: parseFloat(myTruckLng)
+        };
+        updateTruckInfo(session.username, updated);
+        setTruck(updated);
+        
+        // 지도 중심을 영업 위치로 변경
+        const tLat = parseFloat(myTruckLat);
+        const tLng = parseFloat(myTruckLng);
+        setMyLocation({ lat: tLat, lng: tLng });
+        setMapCenterLocation({ lat: tLat, lng: tLng });
+        if (naverMapInstanceRef.current && window.naver && window.naver.maps) {
+          naverMapInstanceRef.current.setCenter(new window.naver.maps.LatLng(tLat, tLng));
+        }
+
+        const spotNameStr = mySpotName ? `[${mySpotName}]` : '영업예정 스팟';
+        alert(`📍 ${spotNameStr} 위치로 영업이 개시되었습니다! 소비자가 이제 사장님의 트럭을 지도에서 찾을 수 있습니다.`);
+      } else if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const updated = {
@@ -1773,8 +1902,8 @@ function OwnerMapContent() {
           {/* 패널 리스트 내용 (스크롤 적용) */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
-            {/* A. 주변 행사/축제 목록 (LNB 최상단 - 먼저 표시) */}
-            <div ref={lnbEventsRef}>
+            {/* A. 주변 행사/축제 목록 (LNB 최상단 -> 하단으로 순서 변경) */}
+            <div ref={lnbEventsRef} style={{ order: 2 }}>
               <p style={{ margin: '0 0 8px', fontWeight: '800', fontSize: '0.8rem', color: '#9B59B6', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 🎡 주변 행사/축제 ({eventsList.filter(e => {
                   const eLat = parseFloat(e.lat || e.latitude);
@@ -1789,7 +1918,19 @@ function OwnerMapContent() {
                   const eLng = parseFloat(e.lng || e.longitude);
                   const dist = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, eLat, eLng);
                   return !searchRadius || dist <= searchRadius;
-                }).map(ev => {
+                }).sort((a, b) => {
+                  const aLat = parseFloat(a.lat || a.latitude);
+                  const aLng = parseFloat(a.lng || a.longitude);
+                  const bLat = parseFloat(b.lat || b.latitude);
+                  const bLng = parseFloat(b.lng || b.longitude);
+                  let distA = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, aLat, aLng);
+                  let distB = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, bLat, bLng);
+                  
+                  if (isNaN(distA)) distA = Infinity;
+                  if (isNaN(distB)) distB = Infinity;
+                  
+                  return distA - distB;
+                }).slice(0, 5).map(ev => {
                   const eLat = parseFloat(ev.lat || ev.latitude);
                   const eLng = parseFloat(ev.lng || ev.longitude);
                   return (
@@ -1797,8 +1938,7 @@ function OwnerMapContent() {
                       key={ev.id}
                       onClick={() => {
                         setMyLocation({ lat: eLat, lng: eLng });
-                        setSelectedItem({ ...ev, lat: eLat, lng: eLng });
-                        setItemType('event');
+                        setHighlightedEventId(ev.id);
                       }}
                       style={{
                         padding: '12px',
@@ -1827,7 +1967,7 @@ function OwnerMapContent() {
                         </span>
                       </div>
                       <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0 0 2px' }}>📍 {ev.location || '소재지 미정'}</p>
-                      <p style={{ fontSize: '0.66rem', color: 'var(--accent)', margin: 0 }}>📅 {ev.startDate || '일정 미정'}</p>
+                      <p style={{ fontSize: '0.66rem', color: 'var(--accent)', margin: 0 }}>📅 {ev.startDate || '미정'} ~ {ev.endDate || '미정'}</p>
                     </div>
                   );
                 })}
@@ -1842,8 +1982,8 @@ function OwnerMapContent() {
               </div>
             </div>
 
-            {/* B. 전국푸드트럭허가구역 목록 (행사 아래에 배치) */}
-            <div ref={lnbSpotsRef}>
+            {/* B. 전국푸드트럭허가구역 목록 (우선 순위 상승) */}
+            <div ref={lnbSpotsRef} style={{ order: 1 }}>
               <p style={{ margin: '0 0 8px', fontWeight: '800', fontSize: '0.8rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 🏛️ 전국푸드트럭허가구역 ({legalSpotsList.filter(s => {
                   const spotLat = parseFloat(s.lat || s.latitude);
@@ -1904,8 +2044,11 @@ function OwnerMapContent() {
                   const bLat = parseFloat(b.lat || b.latitude);
                   const bLng = parseFloat(b.lng || b.longitude);
                   if (sortType === 'distance') {
-                    return getDistance(mapCenterLocation.lat, mapCenterLocation.lng, aLat, aLng)
-                         - getDistance(mapCenterLocation.lat, mapCenterLocation.lng, bLat, bLng);
+                    let distA = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, aLat, aLng);
+                    let distB = getDistance(mapCenterLocation.lat, mapCenterLocation.lng, bLat, bLng);
+                    if (isNaN(distA)) distA = Infinity;
+                    if (isNaN(distB)) distB = Infinity;
+                    return distA - distB;
                   } else {
                     return getEstimatedPopulation(b) - getEstimatedPopulation(a);
                   }
@@ -1982,7 +2125,7 @@ function OwnerMapContent() {
             </div>
 
             {/* C. 날씨 요약 섹션 (LNB 하단) */}
-            <div ref={lnbWeatherRef}>
+            <div ref={lnbWeatherRef} style={{ order: 3 }}>
               <p style={{ margin: '0 0 8px', fontWeight: '800', fontSize: '0.8rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 🌤️ 현재 날씨 요약
               </p>
@@ -2324,6 +2467,22 @@ function OwnerMapContent() {
                 >
                   네이버 지도로 길찾기 시작 🟢
                 </button>
+              </div>
+            )}
+
+            {/* 📍📅 행사 상세 위치 및 기간 표시 */}
+            {itemType === 'event' && (
+              <div style={{
+                background: 'var(--surface-light)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)' }}>📍 <strong>장소:</strong> {selectedItem.location || '소재지 미정'}</p>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--accent)', fontWeight: '700' }}>📅 <strong>기간:</strong> {selectedItem.startDate || '미정'} ~ {selectedItem.endDate || '미정'}</p>
               </div>
             )}
 

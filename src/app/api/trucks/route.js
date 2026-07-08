@@ -22,9 +22,11 @@ export async function GET(request) {
           id, 
           "ownerId" AS "ownerName", 
           "truckName" AS name, 
+          "category",
           menu, 
           "priceInfo", 
           stock, 
+          "waitingTeams",
           status, 
           latitude, 
           longitude, 
@@ -45,7 +47,7 @@ export async function GET(request) {
         intro: r.notice || "안녕하세요! 실시간 영업 정보입니다.",
         menu: r.menu ? JSON.parse(r.menu) : [],
         stock: Number(r.stock || 0),
-        waitingTeams: 0 // 기본값 세팅
+        waitingTeams: Number(r.waitingTeams || 0)
       }));
 
       return Response.json(formatted);
@@ -110,8 +112,10 @@ export async function PUT(request) {
       UPDATE "FoodTruck"
       SET 
         "truckName" = ${name},
+        "category" = ${category || null},
         menu = ${menuStr},
         stock = ${stock || 0},
+        "waitingTeams" = ${waitingTeams || 0},
         status = ${status || 'inactive'},
         notice = ${intro || ''},
         "updatedAt" = NOW()
@@ -126,8 +130,10 @@ export async function PUT(request) {
           id, 
           "ownerId", 
           "truckName", 
+          "category",
           menu, 
           stock, 
+          "waitingTeams",
           status, 
           latitude, 
           longitude, 
@@ -138,8 +144,10 @@ export async function PUT(request) {
           ${ownerUsername + '_truck'}, 
           ${ownerUsername}, 
           ${name}, 
+          ${category || null},
           ${menuStr}, 
           ${stock || 0}, 
+          ${waitingTeams || 0},
           ${status || 'inactive'}, 
           ${lat || null}, 
           ${lng || null}, 

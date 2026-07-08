@@ -19,7 +19,9 @@ export default function GlobalAlertModal() {
       // window.alert 몽키 패치 (덮어쓰기)
       window.alert = (message) => {
         // 메시지가 객체 형태일 경우 문자열로 안전하게 변환
-        const msgStr = typeof message === 'string' ? message : String(message);
+        let msgStr = typeof message === 'string' ? message : String(message);
+        // 리터럴 '\n' 문자열을 실제 줄바꿈 문자로 변환
+        msgStr = msgStr.replace(/\\n/g, '\n');
         setAlertQueue((prevQueue) => [...prevQueue, msgStr]);
       };
 
