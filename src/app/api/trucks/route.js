@@ -107,6 +107,13 @@ export async function PUT(request) {
 
     const menuStr = JSON.stringify(menu || []);
 
+    // ownerUsername으로 User 테이블에서 실제 id(ownerId) 조회
+    const userRes = await sql`SELECT id FROM "User" WHERE username = ${ownerUsername}`;
+    if (!userRes || userRes.length === 0) {
+      return Response.json({ success: false, error: '존재하지 않는 회원입니다.' }, { status: 400 });
+    }
+    const ownerId = userRes[0].id;
+
     // 1. 해당 사장님 ID(ownerId)를 기준으로 먼저 UPDATE 쿼리를 시도합니다.
     let res = await sql`
       UPDATE "FoodTruck"
@@ -117,9 +124,11 @@ export async function PUT(request) {
         stock = ${stock || 0},
         "waitingTeams" = ${waitingTeams || 0},
         status = ${status || 'inactive'},
+        latitude = ${lat || null},
+        longitude = ${lng || null},
         notice = ${intro || ''},
         "updatedAt" = NOW()
-      WHERE "ownerId" = ${ownerUsername}
+      WHERE "ownerId" = ${ownerId}
       RETURNING *
     `;
 
@@ -141,8 +150,8 @@ export async function PUT(request) {
           "updatedAt"
         )
         VALUES (
-          ${ownerUsername + '_truck'}, 
-          ${ownerUsername}, 
+          ${ownerId + '_truck'}, 
+          ${ownerId}, 
           ${name}, 
           ${category || null},
           ${menuStr}, 
