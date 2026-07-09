@@ -21,24 +21,47 @@ export default function AdminMembersPage() {
     }
     setIsAdmin(true);
 
-    const users = JSON.parse(localStorage.getItem('roadfood_users') || "[]");
-    setMemberList(users);
+    // DB에서 회원 목록 로드
+    fetch('/api/admin/members')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const mappedUsers = data.users.map(u => ({
+            ...u,
+            isSuspended: !u.isActive,
+            birthdate: new Date(u.createdAt).toISOString().split('T')[0] // 임시로 가입일을 표시
+          }));
+          setMemberList(mappedUsers);
+        }
+      })
+      .catch(err => console.error("Failed to load members", err));
   }, []);
 
   // 2. 계정 정지 / 활성화 토글 기능 (Soft Suspend)
-  const handleToggleSuspend = (username) => {
-    const updatedMembers = memberList.map(member => {
-      if (member.username === username) {
-        const nextState = !member.isSuspended;
-        alert(`[${member.name}] 사장님의 계정이 ${nextState ? '일시 정지' : '정상 활성화'} 처리되었습니다.`);
-        return { ...member, isSuspended: nextState };
-      }
-      return member;
-    });
+  const handleToggleSuspend = async (username) => {
+    const member = memberList.find(m => m.username === username);
+    if (!member) return;
 
-    setMemberList(updatedMembers);
-    // DB 저장
-    localStorage.setItem('roadfood_users', JSON.stringify(updatedMembers));
+    const nextState = !member.isSuspended;
+    
+    try {
+      const response = await fetch('/api/admin/members', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, isSuspended: nextState })
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`[${member.name}] 님의 계정이 ${nextState ? '일시 정지' : '정상 활성화'} 처리되었습니다.`);
+        setMemberList(prev => prev.map(m => m.username === username ? { ...m, isSuspended: nextState } : m));
+      } else {
+        alert(`❌ 처리 실패: ${result.message}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('서버 통신 실패');
+    }
   };
 
   if (!isAdmin) {
@@ -82,7 +105,7 @@ export default function AdminMembersPage() {
                   <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>이름 (아이디)</th>
                   <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>연락처</th>
                   <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>이메일</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>생년월일</th>
+                  <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>가입일</th>
                   <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>상태</th>
                   <th style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'right' }}>조치</th>
                 </tr>

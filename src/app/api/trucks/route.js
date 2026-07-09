@@ -154,7 +154,7 @@ async function handleUpdate(request) {
     return NextResponse.json({ success: false, error: '잘못된 JSON 바디 규격입니다.' }, { status: 400 });
   }
 
-  const { ownerUsername, name, category, intro, menu, stock, status, lat, lng } = params;
+  const { ownerUsername, name, category, intro, menu, stock, waitingTeams, status, lat, lng } = params;
   const username = ownerUsername || params.id;
 
   if (!username) {
@@ -176,7 +176,7 @@ async function handleUpdate(request) {
       intro: intro || '',
       menu: menu || [],
       stock: stock || 0,
-      waitingTeams: 0
+      waitingTeams: waitingTeams || 0
     };
     if (idx !== -1) {
       fileData[idx] = updatedObj;
@@ -191,7 +191,14 @@ async function handleUpdate(request) {
     console.log(`🔄 [API/trucks] Neon Database 푸드트럭 정보 업데이트 시작 (Owner: ${username})...`);
     const menuStr = JSON.stringify(menu || []);
 
-    // A. 1순위: DB UPDATE 시도
+    // ownerUsername으로 User 테이블에서 실제 id(ownerId) 조회
+    const userRes = await sql`SELECT id FROM "User" WHERE username = ${username}`;
+    if (!userRes || userRes.length === 0) {
+      return NextResponse.json({ success: false, error: '존재하지 않는 회원입니다.' }, { status: 400 });
+    }
+    const ownerId = userRes[0].id;
+
+    // 1. 해당 사장님 ID(ownerId)를 기준으로 먼저 UPDATE 쿼리를 시도합니다.
     let res = await sql`
       UPDATE "FoodTruck"
       SET 
@@ -201,9 +208,11 @@ async function handleUpdate(request) {
         stock = ${stock || 0},
         "waitingTeams" = ${waitingTeams || 0},
         status = ${status || 'inactive'},
+        latitude = ${lat || null},
+        longitude = ${lng || null},
         notice = ${intro || ''},
         "updatedAt" = NOW()
-      WHERE "ownerId" = ${username}
+      WHERE "ownerId" = ${ownerId}
       RETURNING *
     `;
 
@@ -225,8 +234,8 @@ async function handleUpdate(request) {
           "updatedAt"
         )
         VALUES (
-          ${username + '_truck'}, 
-          ${username}, 
+          ${ownerId + '_truck'}, 
+          ${ownerId}, 
           ${name || '푸드트럭'}, 
           ${category || null},
           ${menuStr}, 

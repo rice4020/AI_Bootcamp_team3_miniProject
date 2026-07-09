@@ -92,29 +92,15 @@ export default function AdminDashboardPage() {
     const savedProvider = localStorage.getItem('roadfood_map_provider') || 'naver';
     setMapProvider(savedProvider);
 
-    // 로컬스토리지에서 실제 가입 및 활성 상태 집계
-    interface UserItem {
-      isSuspended?: boolean;
-      [key: string]: any;
-    }
-    interface TruckItem {
-      status?: string;
-      [key: string]: any;
-    }
-    const users: UserItem[] = JSON.parse(localStorage.getItem('roadfood_users') || "[]");
-    const trucks: TruckItem[] = JSON.parse(localStorage.getItem('roadfood_trucks') || "[]");
-
-    const active = trucks.filter(t => t.status === 'active').length;
-
-    // 모의 suspended(정지) 계정 데이터 집계 (임시)
-    const suspended = users.filter(u => u.isSuspended).length;
-
-    setStats({
-      totalUsers: users.length,
-      activeTrucks: active,
-      totalTrucks: trucks.length,
-      suspendedUsers: suspended
-    });
+    // DB에서 통계 수집
+    fetch('/api/admin/dashboard-stats')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setStats(data.stats);
+        }
+      })
+      .catch(err => console.error("Failed to load dashboard stats", err));
 
     // SNS 이벤트 데이터 로드
     fetch('/api/admin/sns-tracking')
