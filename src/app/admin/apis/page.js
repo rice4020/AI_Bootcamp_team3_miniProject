@@ -211,9 +211,9 @@ export default function AdminApisPage() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>제한스팟</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
                   <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#00b894' }}>
-                    100 <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>소</span>
+                    {stats.total || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
                   </div>
                 </div>
                 <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
