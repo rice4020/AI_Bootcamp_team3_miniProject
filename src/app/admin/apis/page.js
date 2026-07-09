@@ -12,6 +12,7 @@ export default function AdminApisPage() {
   const [apiList, setApiList] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [stats, setStats] = useState({
     weatherTotal: 0,
     weatherStatus: 'active',
@@ -28,6 +29,11 @@ export default function AdminApisPage() {
 
   // 활성화된 API 탭 상태 관리 ('api-1' = 기상청, 'api-2' = 푸드트럭, 'api-3' = 네이버, 'api-4' = 상권분석, 'api-5' = 행사문화)
   const [activeTab, setActiveTab] = useState('api-1');
+
+  const handleCardClick = (apiId) => {
+    setActiveTab(apiId);
+    setIsModalOpen(true);
+  };
 
   // 📄 각 API별 페이지네이션 상태 관리
   const [pages, setPages] = useState({
@@ -167,7 +173,7 @@ export default function AdminApisPage() {
             gap: '24px'
           }}>
             {/* 1. 기상청 동네정보 API */}
-            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-1')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-1' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="glass-panel clickable-card" onClick={() => handleCardClick('api-1')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>기상청 동네예보 API</span>
                 <span style={{ fontSize: '0.72rem', color: '#0984e3', background: 'rgba(9, 132, 227, 0.1)', border: '1px solid rgba(9, 132, 227, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>1일 기준</span>
@@ -198,7 +204,7 @@ export default function AdminApisPage() {
             </div>
 
             {/* 2. 전국 푸드트럭 허가구역 점용공간 API */}
-            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-2')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-2' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="glass-panel clickable-card" onClick={() => handleCardClick('api-2')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>전국 푸드트럭 허가구역 API</span>
                 <span style={{ fontSize: '0.72rem', color: '#00b894', background: 'rgba(0, 184, 148, 0.1)', border: '1px solid rgba(0, 184, 148, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간</span>
@@ -229,7 +235,7 @@ export default function AdminApisPage() {
             </div>
 
             {/* 3. 네이버 지도 API */}
-            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-3')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-3' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="glass-panel clickable-card" onClick={() => handleCardClick('api-3')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>네이버 지도 API (Geocoding)</span>
                 <span style={{ fontSize: '0.72rem', color: '#e84393', background: 'rgba(232, 67, 147, 0.1)', border: '1px solid rgba(232, 67, 147, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간</span>
@@ -260,7 +266,7 @@ export default function AdminApisPage() {
             </div>
 
             {/* 4. 소상공인 상권 정보 API */}
-            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-4')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-4' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="glass-panel clickable-card" onClick={() => handleCardClick('api-4')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>소상공인 상권정보 API</span>
                 <span style={{ fontSize: '0.72rem', color: '#fdcb6e', background: 'rgba(253, 203, 110, 0.1)', border: '1px solid rgba(253, 203, 110, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>상권 정보</span>
@@ -291,7 +297,7 @@ export default function AdminApisPage() {
             </div>
 
             {/* 5. 서울특별시 문화/행사 API */}
-            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-5')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-5' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="glass-panel clickable-card" onClick={() => handleCardClick('api-5')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>서울 행사/문화 API</span>
                 <span style={{ fontSize: '0.72rem', color: '#6c5ce7', background: 'rgba(108, 92, 231, 0.1)', border: '1px solid rgba(108, 92, 231, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>행사 정보</span>
@@ -354,72 +360,41 @@ export default function AdminApisPage() {
 
           </div>
 
-          {/* 🗂️ 가로형 탭 메뉴 바 (3안: 패딩/폰트/라벨 컴팩트화로 1줄에 밀착 배치) */}
-          <div style={{
-            display: 'flex',
-            borderBottom: '1px solid var(--border)',
-            paddingBottom: '2px',
-            gap: '6px',
-            width: '100%',
-            overflowX: 'hidden'
-          }}>
-            {[
-              { id: 'api-1', label: '⛅ 기상청 날씨' },
-              { id: 'api-2', label: '🚚 전국 푸드트럭' },
-              { id: 'api-3', label: '🗺️ 네이버 지도' },
-              { id: 'api-4', label: '🏢 소상공인 상권' },
-              { id: 'api-5', label: '🎭 행사문화 포털' }
-            ].map(tab => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    flex: 1,
-                    padding: '10px 8px',
-                    fontSize: '0.8rem',
-                    fontWeight: isActive ? '800' : '600',
-                    color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
-                    background: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--border)',
-                    borderBottom: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    borderRadius: '10px 10px 0 0',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    textAlign: 'center',
-                    textOverflow: 'ellipsis',
-                    overflow: 'hidden',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isActive ? '0 -4px 15px rgba(108, 92, 231, 0.2)' : 'none'
-                  }}
-                  className={isActive ? '' : 'tab-hover'}
-                  title={tab.label}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* 📄 선택된 API의 단독 상세 관리 패널 */}
-          {(() => {
+          {/* 🗂️ 가로형 탭 메뉴 바 및 상세 패널을 팝업창(모달)으로 대체 */}
+          {isModalOpen && (() => {
             const api = apiList.find(item => item.id === activeTab);
-            if (!api) {
-              return (
-                <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  데이터를 실시간 로드 중이거나, 연동 중인 API 목록이 존재하지 않습니다.
-                </div>
-              );
-            }
+            if (!api) return null;
 
             return (
-              <div className="glass-panel" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {/* 1. API 기본 메타 정보 및 강제 갱신 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '20px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: '850', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span>{api.name}</span>
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(4px)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 1000,
+              }}>
+                <div className="glass-panel" style={{
+                  width: '90%',
+                  maxWidth: '750px',
+                  maxHeight: '85vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '28px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '16px',
+                  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
+                  overflow: 'hidden'
+                }}>
+                  {/* 모달 헤더 */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '850', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+                      <span>{api.name} 상세 제어</span>
                       <span style={{
                         fontSize: '0.75rem',
                         background: api.status === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
@@ -432,198 +407,227 @@ export default function AdminApisPage() {
                         {api.status === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
                       </span>
                     </h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                      최근 동기화일: <strong>{api.lastUpdated}</strong> | 누적 수집 건수: <strong>{api.collectedCount?.toLocaleString()}건</strong>
-                    </div>
+                    <button 
+                      onClick={() => setIsModalOpen(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '1.5rem',
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1
+                      }}
+                    >
+                      &times;
+                    </button>
                   </div>
 
-                  <Button
-                    variant="primary"
-                    onClick={() => handleSyncApi(api.id, api.name)}
-                    disabled={isSyncing}
-                    style={{ padding: '10px 20px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    {isSyncing ? '🔄 동기화 중...' : '🔄 실시간 강제 동기화'}
-                  </Button>
-                </div>
-
-                {/* 2. 상세 수집 로그 & 리스트 영역 */}
-                <div style={{
-                  padding: '20px',
-                  background: 'rgba(255,255,255,0.01)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '12px',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '750', color: 'var(--accent)' }}>
-                      📂 실시간 수집 내역 로그 (페이지: {api.pagination?.currentPage || 1} / {api.pagination?.totalPages || 1})
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      최근 동기화 시점 기준 (페이지당 10개씩 표시)
-                    </span>
-                  </div>
-
-                  {/* 수집 아이템 상세 매핑 */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {Array.isArray(api.details) && api.details.length > 0 ? (
-                      api.details.map(det => (
-                        <div
-                          key={det.id}
-                          style={{
-                            padding: '12px 16px',
-                            background: 'rgba(255,255,255,0.01)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '0.82rem'
-                          }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <strong style={{ color: 'var(--text-primary)' }}>
-                              {det.location || det.spotName || det.query || det.regionName || det.eventName}
-                            </strong>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                              결과값: {det.value || det.address || det.result || det.zoneType || det.eventPeriod}
-                            </span>
-                          </div>
-                          <span style={{
-                            fontSize: '0.72rem',
-                            color: det.state === '반려됨' ? 'var(--danger)' : det.state === '대기중' ? 'var(--warning)' : 'var(--success)',
-                            fontWeight: '700',
-                            background: det.state === '반려됨' ? 'rgba(214, 48, 49, 0.08)' : det.state === '대기중' ? 'rgba(241, 196, 15, 0.08)' : 'rgba(0, 184, 148, 0.08)',
-                            padding: '2px 8px',
-                            borderRadius: '6px'
-                          }}>
-                            {det.state || "정상연동"}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                        수집 내역 로그가 존재하지 않습니다.
+                  {/* 모달 바디 (스크롤 스팟) */}
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', paddingRight: '4px' }}>
+                    
+                    {/* 1. 메타 정보 & 동기화 실행 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        최근 동기화일: <strong>{api.lastUpdated}</strong> | 누적 수집 건수: <strong>{api.collectedCount?.toLocaleString()}건</strong>
                       </div>
-                    )}
-                  </div>
+                      <Button
+                        variant="primary"
+                        onClick={() => handleSyncApi(api.id, api.name)}
+                        disabled={isSyncing}
+                        style={{ padding: '8px 16px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {isSyncing ? '🔄 동기화 중...' : '🔄 실시간 강제 동기화'}
+                      </Button>
+                    </div>
 
-                  {/* 📄 페이지네이션 네비게이션 UI */}
-                  {api.pagination && api.pagination.totalPages > 1 && (() => {
-                    const current = api.pagination.currentPage;
-                    const total = api.pagination.totalPages;
-                    const maxVisible = 5;
-                    let start = Math.max(1, current - Math.floor(maxVisible / 2));
-                    let end = Math.min(total, start + maxVisible - 1);
-                    if (end - start + 1 < maxVisible) {
-                      start = Math.max(1, end - maxVisible + 1);
-                    }
+                    {/* 2. 상세 수집 로그 & 리스트 영역 */}
+                    <div style={{
+                      padding: '20px',
+                      background: 'rgba(255,255,255,0.01)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '12px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '750', color: 'var(--accent)' }}>
+                          📂 실시간 수집 내역 로그 (페이지: {api.pagination?.currentPage || 1} / {api.pagination?.totalPages || 1})
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          최근 동기화 시점 기준 (페이지당 10개씩 표시)
+                        </span>
+                      </div>
 
-                    return (
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginTop: '24px',
-                        paddingTop: '20px',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-                        flexWrap: 'wrap'
-                      }}>
-                        <button
-                          disabled={current === 1}
-                          onClick={() => handlePageChange(api.id, 1)}
-                          style={{
-                            padding: '6px 10px',
-                            fontSize: '0.75rem',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '8px',
-                            cursor: current === 1 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          처음
-                        </button>
-
-                        <button
-                          disabled={current === 1}
-                          onClick={() => handlePageChange(api.id, current - 1)}
-                          style={{
-                            padding: '6px 10px',
-                            fontSize: '0.75rem',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '8px',
-                            cursor: current === 1 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          이전
-                        </button>
-                        
-                        {Array.from({ length: end - start + 1 }, (_, idx) => {
-                          const pNum = start + idx;
-                          const isCurrent = pNum === current;
-                          return (
-                            <button
-                              key={pNum}
-                              onClick={() => handlePageChange(api.id, pNum)}
+                      {/* 수집 아이템 상세 매핑 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {Array.isArray(api.details) && api.details.length > 0 ? (
+                          api.details.map(det => (
+                            <div
+                              key={det.id}
                               style={{
-                                width: '30px',
-                                height: '30px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.78rem',
-                                fontWeight: isCurrent ? 'bold' : 'normal',
-                                background: isCurrent ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
-                                color: isCurrent ? '#FFF' : 'var(--text-secondary)',
-                                border: isCurrent ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                padding: '12px 16px',
+                                background: 'rgba(255,255,255,0.01)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '8px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                boxShadow: isCurrent ? '0 0 10px rgba(108, 92, 231, 0.4)' : 'none'
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                fontSize: '0.82rem'
                               }}
                             >
-                              {pNum}
-                            </button>
-                          );
-                        })}
-
-                        <button
-                          disabled={current === total}
-                          onClick={() => handlePageChange(api.id, current + 1)}
-                          style={{
-                            padding: '6px 10px',
-                            fontSize: '0.75rem',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '8px',
-                            cursor: current === total ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          다음
-                        </button>
-
-                        <button
-                          disabled={current === total}
-                          onClick={() => handlePageChange(api.id, total)}
-                          style={{
-                            padding: '6px 10px',
-                            fontSize: '0.75rem',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '8px',
-                            cursor: current === total ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          끝
-                        </button>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <strong style={{ color: 'var(--text-primary)' }}>
+                                  {det.location || det.spotName || det.query || det.regionName || det.eventName}
+                                </strong>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                  결과값: {det.value || det.address || det.result || det.zoneType || det.eventPeriod}
+                                </span>
+                              </div>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                color: det.state === '반려됨' ? 'var(--danger)' : det.state === '대기중' ? 'var(--warning)' : 'var(--success)',
+                                fontWeight: '700',
+                                background: det.state === '반려됨' ? 'rgba(214, 48, 49, 0.08)' : det.state === '대기중' ? 'rgba(241, 196, 15, 0.08)' : 'rgba(0, 184, 148, 0.08)',
+                                padding: '2px 8px',
+                                borderRadius: '6px'
+                              }}>
+                                {det.state || "정상연동"}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                            수집 내역 로그가 존재하지 않습니다.
+                          </div>
+                        )}
                       </div>
-                    );
-                  })()}
+
+                      {/* 📄 페이지네이션 네비게이션 UI */}
+                      {api.pagination && api.pagination.totalPages > 1 && (() => {
+                        const current = api.pagination.currentPage;
+                        const total = api.pagination.totalPages;
+                        const maxVisible = 5;
+                        let start = Math.max(1, current - Math.floor(maxVisible / 2));
+                        let end = Math.min(total, start + maxVisible - 1);
+                        if (end - start + 1 < maxVisible) {
+                          start = Math.max(1, end - maxVisible + 1);
+                        }
+
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginTop: '24px',
+                            paddingTop: '20px',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                            flexWrap: 'wrap'
+                          }}>
+                            <button
+                              disabled={current === 1}
+                              onClick={() => handlePageChange(api.id, 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.75rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === 1 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              처음
+                            </button>
+
+                            <button
+                              disabled={current === 1}
+                              onClick={() => handlePageChange(api.id, current - 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.75rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === 1 ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === 1 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              이전
+                            </button>
+                            
+                            {Array.from({ length: end - start + 1 }, (_, idx) => {
+                              const pNum = start + idx;
+                              const isCurrent = pNum === current;
+                              return (
+                                <button
+                                  key={pNum}
+                                  onClick={() => handlePageChange(api.id, pNum)}
+                                  style={{
+                                    width: '30px',
+                                    height: '30px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.78rem',
+                                    fontWeight: isCurrent ? 'bold' : 'normal',
+                                    background: isCurrent ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
+                                    color: isCurrent ? '#FFF' : 'var(--text-secondary)',
+                                    border: isCurrent ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    boxShadow: isCurrent ? '0 0 10px rgba(108, 92, 231, 0.4)' : 'none'
+                                  }}
+                                >
+                                  {pNum}
+                                </button>
+                              );
+                            })}
+
+                            <button
+                              disabled={current === total}
+                              onClick={() => handlePageChange(api.id, current + 1)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.75rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === total ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              다음
+                            </button>
+
+                            <button
+                              disabled={current === total}
+                              onClick={() => handlePageChange(api.id, total)}
+                              style={{
+                                padding: '6px 10px',
+                                fontSize: '0.75rem',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                color: current === total ? 'rgba(255, 255, 255, 0.15)' : 'var(--text-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '8px',
+                                cursor: current === total ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              끝
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                  </div>
+
+                  {/* 모달 푸터 */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '20px' }}>
+                    <Button onClick={() => setIsModalOpen(false)} variant="secondary" style={{ padding: '8px 20px' }}>
+                      닫기
+                    </Button>
+                  </div>
+
                 </div>
               </div>
             );
