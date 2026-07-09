@@ -59,9 +59,11 @@ export async function GET(request) {
           id, 
           "ownerId" AS "ownerName", 
           "truckName" AS name, 
+          "category",
           menu, 
           "priceInfo", 
           stock, 
+          "waitingTeams",
           status, 
           latitude, 
           longitude, 
@@ -81,15 +83,49 @@ export async function GET(request) {
         intro: r.notice || "안녕하세요! 실시간 영업 정보입니다.",
         menu: r.menu ? JSON.parse(r.menu) : [],
         stock: Number(r.stock || 0),
-        waitingTeams: 0
+        waitingTeams: Number(r.waitingTeams || 0)
       }));
 
       return NextResponse.json(formatted);
 
-    } catch (dbError) {
-      console.warn('⚠️ [API/trucks] Neon DB 쿼리 실패. 로컬 파일 "trucks.json" 폴백을 시도합니다:', dbError.message);
-      const fileData = await getTrucksFileData();
-      return NextResponse.json(fileData);
+    } catch (prismaError) {
+      console.warn('⚠️ [API/trucks] "FoodTruck" 테이블 조회 실패. 임시 "food_trucks" 테이블로 전환합니다:', prismaError.message);
+      
+      try {
+        // 3. 만약 "FoodTruck"이 없다면, 임시/대시보드 통계용 테이블인 "food_trucks" 조회를 시도합니다.
+        const rows = await sql`
+          SELECT 
+            id, 
+            owner_username AS "ownerName", 
+            truck_name AS name, 
+            status, 
+            latitude, 
+            longitude 
+          FROM food_trucks
+        `;
+
+        const formatted = rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          category: 'snack', // 임시 카테고리
+          lat: Number(r.latitude),
+          lng: Number(r.longitude),
+          status: String(r.status).toLowerCase(), // active, preparing, sold_out, inactive 등
+          ownerName: r.ownerName,
+          phone: "010-1234-5678",
+          intro: "실시간 위치 정보가 갱신되었습니다.",
+          menu: [],
+          stock: 0,
+          waitingTeams: 0
+        }));
+
+        return NextResponse.json(formatted);
+
+      } catch (dbError) {
+        console.warn('⚠️ [API/trucks] Neon DB 쿼리 실패. 로컬 파일 "trucks.json" 폴백을 시도합니다:', dbError.message);
+        const fileData = await getTrucksFileData();
+        return NextResponse.json(fileData);
+      }
     }
 
   } catch (error) {
@@ -160,8 +196,10 @@ async function handleUpdate(request) {
       UPDATE "FoodTruck"
       SET 
         "truckName" = ${name || '푸드트럭'},
+        "category" = ${category || null},
         menu = ${menuStr},
         stock = ${stock || 0},
+        "waitingTeams" = ${waitingTeams || 0},
         status = ${status || 'inactive'},
         notice = ${intro || ''},
         "updatedAt" = NOW()
@@ -176,8 +214,10 @@ async function handleUpdate(request) {
           id, 
           "ownerId", 
           "truckName", 
+          "category",
           menu, 
           stock, 
+          "waitingTeams",
           status, 
           latitude, 
           longitude, 
@@ -188,8 +228,10 @@ async function handleUpdate(request) {
           ${username + '_truck'}, 
           ${username}, 
           ${name || '푸드트럭'}, 
+          ${category || null},
           ${menuStr}, 
           ${stock || 0}, 
+          ${waitingTeams || 0},
           ${status || 'inactive'}, 
           ${lat || 37.5285}, 
           ${lng || 126.9328}, 

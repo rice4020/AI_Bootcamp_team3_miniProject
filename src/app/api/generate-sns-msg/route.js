@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
  */
 export async function POST(request) {
   try {
-    const { truckName, intro, menus, locationName } = await request.json();
+    const { truckName, intro, menus, locationName, keywords, tone } = await request.json();
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -29,17 +29,25 @@ ${menus && menus.length > 0 ? menus.map(m => `✨ ${m.name} - ${m.price.toLocale
       });
     }
 
+    // 톤앤매너 번역
+    let toneInstruction = '친근하고 식욕을 자극하는 문체';
+    if (tone === 'witty') toneInstruction = '유머러스하고 위트 넘치며, 친근하고 식욕을 자극하는 장사꾼 스타일';
+    if (tone === 'emotional') toneInstruction = '감성적이고 따뜻하며, 고객에게 위로를 주는 다정한 스타일';
+    if (tone === 'polite') toneInstruction = '정중하고 신뢰감을 주며, 깔끔하고 공식적인 공지 스타일';
+
     // 실제 Claude API 호출 로직 (API Key가 존재할 때)
     const prompt = `
 당신은 마케팅 전문가이자 센스 넘치는 푸드트럭 사장님입니다. 
-아래 정보를 기반으로 인스타그램 및 SNS에 즉시 업로드할 수 있는 맛깔나고 매력적인 홍보/공지 문구를 작성해 주세요.
-해시태그를 포함하며, 줄바꿈과 이모지(Emoji)를 풍부하게 섞어 친근하고 식욕을 자극하는 문체로 만드세요.
+아래 정보를 기반으로 인스타그램 및 SNS에 즉시 업로드할 수 있는 홍보/공지 문구를 작성해 주세요.
+반드시 다음 톤앤매너를 지켜주세요: "${toneInstruction}"
+해시태그를 포함하며, 줄바꿈과 이모지(Emoji)를 적절히 활용하세요.
 
 [푸드트럭 정보]
 - 이름: ${truckName}
 - 위치: ${locationName}
 - 한줄소개: ${intro}
-- 판매메뉴: ${menus.map(m => `${m.name}(${m.price}원)`).join(', ')}
+- 판매메뉴: ${menus && menus.length > 0 ? menus.map(m => `${m.name}(${m.price}원)`).join(', ') : '정보 없음'}
+- 강조할 키워드: ${keywords ? keywords : '없음'}
     `;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {

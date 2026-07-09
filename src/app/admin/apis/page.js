@@ -12,6 +12,19 @@ export default function AdminApisPage() {
   const [apiList, setApiList] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+  const [stats, setStats] = useState({
+    weatherTotal: 0,
+    weatherStatus: 'active',
+    spotsStatus: 'active',
+    naverTotal: 0,
+    naverStatus: 'active',
+    commercialTotal: 0,
+    commercialStatus: 'active',
+    culturalTotal: 0,
+    culturalStatus: 'active',
+    snsTotal: 0,
+    snsStatus: 'active'
+  });
 
   // 활성화된 API 탭 상태 관리 ('api-1' = 기상청, 'api-2' = 푸드트럭, 'api-3' = 네이버, 'api-4' = 상권분석, 'api-5' = 행사문화)
   const [activeTab, setActiveTab] = useState('api-1');
@@ -37,11 +50,24 @@ export default function AdminApisPage() {
   const fetchApis = async (currentPages = pages) => {
     try {
       const q = `?type=systems&page_api1=${currentPages['api-1']}&page_api2=${currentPages['api-2']}&page_api3=${currentPages['api-3']}&page_api4=${currentPages['api-4']}&page_api5=${currentPages['api-5']}`;
-      const res = await fetch(`/api/admin/apis${q}`);
-      if (res.ok) {
-        const json = await res.json();
+      
+      // 병렬 데이터 로딩
+      const [apisRes, statsRes] = await Promise.all([
+        fetch(`/api/admin/apis${q}`),
+        fetch('/api/admin/apis?type=dashboard')
+      ]);
+
+      if (apisRes.ok) {
+        const json = await apisRes.json();
         if (json.success && Array.isArray(json.data)) {
           setApiList(json.data);
+        }
+      }
+
+      if (statsRes.ok) {
+        const json = await statsRes.json();
+        if (json.success && json.stats) {
+          setStats(json.stats);
         }
       }
     } catch (err) {
@@ -132,6 +158,200 @@ export default function AdminApisPage() {
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
               기상청 날씨 조회 API 및 네이버 지도 Geocoding API 커넥터들의 통신 상태, 요량 및 변환 수집 이력을 점검하고 강제 갱신합니다.
             </p>
+          </div>
+
+          {/* 🔌 6대 외부 연동 API 현황 그리드 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '24px'
+          }}>
+            {/* 1. 기상청 동네정보 API */}
+            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-1')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-1' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>기상청 동네예보 API</span>
+                <span style={{ fontSize: '0.72rem', color: '#0984e3', background: 'rgba(9, 132, 227, 0.1)', border: '1px solid rgba(9, 132, 227, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>1일 기준</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>수집건수</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0984e3' }}>
+                    {stats.weatherTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.weatherStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.weatherStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.weatherStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.weatherStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. 전국 푸드트럭 허가구역 점용공간 API */}
+            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-2')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-2' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>전국 푸드트럭 허가구역 API</span>
+                <span style={{ fontSize: '0.72rem', color: '#00b894', background: 'rgba(0, 184, 148, 0.1)', border: '1px solid rgba(0, 184, 148, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>제한스팟</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#00b894' }}>
+                    100 <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>소</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.spotsStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.spotsStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.spotsStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.spotsStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. 네이버 지도 API */}
+            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-3')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-3' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>네이버 지도 API (Geocoding)</span>
+                <span style={{ fontSize: '0.72rem', color: '#e84393', background: 'rgba(232, 67, 147, 0.1)', border: '1px solid rgba(232, 67, 147, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>실시간</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>일일 호출량</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#e84393' }}>
+                    {stats.naverTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>회</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.naverStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.naverStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.naverStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.naverStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. 소상공인 상권 정보 API */}
+            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-4')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-4' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>소상공인 상권정보 API</span>
+                <span style={{ fontSize: '0.72rem', color: '#fdcb6e', background: 'rgba(253, 203, 110, 0.1)', border: '1px solid rgba(253, 203, 110, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>상권 정보</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상권 수집</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#fdcb6e' }}>
+                    {stats.commercialTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.commercialStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.commercialStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.commercialStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.commercialStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 5. 서울특별시 문화/행사 API */}
+            <div className="glass-panel clickable-card" onClick={() => setActiveTab('api-5')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: activeTab === 'api-5' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>서울 행사/문화 API</span>
+                <span style={{ fontSize: '0.72rem', color: '#6c5ce7', background: 'rgba(108, 92, 231, 0.1)', border: '1px solid rgba(108, 92, 231, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>행사 정보</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>행사 수집</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#6c5ce7' }}>
+                    {stats.culturalTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.culturalStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.culturalStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.culturalStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.culturalStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. SNS AI 트렌드 추출 API */}
+            <div className="glass-panel clickable-card" onClick={() => router.push('/admin/content')} style={{ padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '16px', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px', gap: '12px' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-primary)' }}>SNS 트렌드 AI 추출 API</span>
+                <span style={{ fontSize: '0.72rem', color: '#ffeaa7', background: 'rgba(255, 234, 167, 0.1)', border: '1px solid rgba(255, 234, 167, 0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: '800', whiteSpace: 'nowrap' }}>AI 분석</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>추출 로그</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#fdcb6e' }}>
+                    {stats.snsTotal || 0} <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-secondary)' }}>건</span>
+                  </div>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>상태정보</div>
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    color: stats.snsStatus === 'active' ? 'var(--success)' : 'var(--danger)',
+                    background: stats.snsStatus === 'active' ? 'rgba(0, 184, 148, 0.1)' : 'rgba(214, 48, 49, 0.1)',
+                    border: `1px solid ${stats.snsStatus === 'active' ? 'var(--success)' : 'var(--danger)'}`,
+                    padding: '4px 16px',
+                    borderRadius: '12px',
+                    display: 'inline-block'
+                  }}>
+                    {stats.snsStatus === 'active' ? '🟢 연결정상' : '🔴 연결장애'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
           </div>
 
           {/* 🗂️ 가로형 탭 메뉴 바 (3안: 패딩/폰트/라벨 컴팩트화로 1줄에 밀착 배치) */}

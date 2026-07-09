@@ -16,11 +16,10 @@ export default function MyTruckManagementPage() {
   // 트럭 기본 정보 State
   const [truckName, setTruckName] = useState('');
   const [truckIntro, setTruckIntro] = useState('');
-  const [category, setCategory] = useState('snack');
+  const [mainCategory, setMainCategory] = useState('');
+  const [subCategory, setSubCategory] = useState('');
   const [customCategory, setCustomCategory] = useState(''); // 직접 입력받을 카테고리명
   const [isCustomMode, setIsCustomMode] = useState(false);    // 직접 입력 모드 활성화 여부
-  const [stock, setStock] = useState(0);
-  const [waitingTeams, setWaitingTeams] = useState(0);
 
   // 기본 고정 카테고리 리스트
   const DEFAULT_CATS = ['snack', 'sweet', 'skewer', 'takoyaki', 'meat'];
@@ -31,6 +30,9 @@ export default function MyTruckManagementPage() {
   // 신규 메뉴 등록용 State
   const [newMenuName, setNewMenuName] = useState('');
   const [newMenuPrice, setNewMenuPrice] = useState('');
+
+  // DB 카테고리 State
+  const [dbCategories, setDbCategories] = useState([]);
 
   // 1. 세션 확인 및 트럭 로딩
   useEffect(() => {
@@ -60,36 +62,73 @@ export default function MyTruckManagementPage() {
 
     setSession(userSession);
     
-    const truckData = getTruckInfo(userSession.username);
-    if (truckData) {
-      setTruck(truckData);
-      setTruckName(truckData.name);
-      setTruckIntro(truckData.intro);
-      setStock(truckData.stock);
-      setWaitingTeams(truckData.waitingTeams);
-      setMenuList(truckData.menu || []);
-      
-      // 카테고리 초기값 세팅 (기존 저장된 카테고리가 사용자 정의 카테고리인지 체크)
-      if (DEFAULT_CATS.includes(truckData.category)) {
-        setCategory(truckData.category);
-        setIsCustomMode(false);
-      } else {
-        setCategory('custom');
-        setCustomCategory(truckData.category);
-        setIsCustomMode(true);
+    // DB 카테고리 로드 후 트럭 정보 세팅
+    const fetchMenusAndTruck = async () => {
+      let loadedCats = [];
+      try {
+        const res = await fetch('/api/menus');
+        const data = await res.json();
+        if (data.success) {
+          setDbCategories(data.menus);
+          loadedCats = data.menus.map(c => `${c.category}-${c.subCategory}`);
+        }
+      } catch (err) {
+        console.error('메뉴 로드 실패', err);
       }
-    } else {
-      // 💡 [버그 픽스] 트럭 정보가 아예 없는 신규 유저일 경우 빈 객체로 세팅하여 무한 로딩 방지
-      setTruck({});
-    }
+
+      let truckData = null;
+      try {
+        const truckRes = await fetch('/api/trucks');
+        const trucksList = await truckRes.json();
+        const myDbTruck = trucksList.find(t => t.ownerName === userSession.username);
+        if (myDbTruck) {
+          truckData = myDbTruck;
+        } else {
+          truckData = getTruckInfo(userSession.username);
+        }
+      } catch (err) {
+        console.error('트럭 로드 실패', err);
+        truckData = getTruckInfo(userSession.username);
+      }
+
+      if (truckData) {
+        setTruck(truckData);
+        setTruckName(truckData.name || '');
+        setTruckIntro(truckData.intro || '');
+        setMenuList(truckData.menu || []);
+        
+        // 이전 하드코딩 값(DEFAULT_CATS)이거나 DB값인지 체크
+        if (DEFAULT_CATS.includes(truckData.category)) {
+          setMainCategory(truckData.category);
+          setSubCategory('');
+          setIsCustomMode(false);
+        } else if (loadedCats.includes(truckData.category)) {
+          const [m, s] = truckData.category.split('-');
+          setMainCategory(m);
+          setSubCategory(s);
+          setIsCustomMode(false);
+        } else {
+          setMainCategory('custom');
+          setSubCategory('');
+          setCustomCategory(truckData.category || '');
+          setIsCustomMode(true);
+        }
+      } else {
+        setTruck({});
+      }
+    };
+
+    fetchMenusAndTruck();
   }, []);
 
-  // 2. 기본 정보 및 재고/대기 팀 일괄 업데이트
-  const handleSaveBasicInfo = (e) => {
-    e.preventDefault();
+  // 2. 통합 일괄 업데이트
+  const handleSaveAll = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
 
     // 💡 카테고리 결정 (직접 입력 모드일 경우 customCategory 값 저장)
-    const finalCategory = isCustomMode ? customCategory.trim() : category;
+    const finalCategory = isCustomMode 
+      ? customCategory.trim() 
+      : (subCategory ? `${mainCategory}-${subCategory}` : mainCategory);
 
     if (isCustomMode && !customCategory.trim()) {
       alert("⚠️ 직접 입력할 카테고리명을 입력해 주세요!");
@@ -102,18 +141,23 @@ export default function MyTruckManagementPage() {
       name: truckName,
       intro: truckIntro,
       category: finalCategory,
-      stock: parseInt(stock) || 0,
-      waitingTeams: parseInt(waitingTeams) || 0,
+      menu: menuList, // 💡 메뉴 리스트도 일괄 저장
     };
 
     updateTruckInfo(session.username, updated);
     setTruck(updated);
-    alert("🚚 트럭 기본 정보 및 실시간 재고/대기 팀 수량이 저장되었습니다.");
+    alert("🚚 트럭 정보 및 메뉴가 일괄 저장되었습니다.");
   };
 
   // 3. 신규 메뉴 추가 (Create)
   const handleAddMenu = (e) => {
     e.preventDefault();
+
+    if (menuList.length >= 5) {
+      alert("메뉴는 최대 5개까지만 등록할 수 있습니다.");
+      return;
+    }
+
     if (!newMenuName.trim() || !newMenuPrice) {
       alert("메뉴 이름과 가격을 바르게 입력해 주세요.");
       return;
@@ -125,33 +169,21 @@ export default function MyTruckManagementPage() {
       return;
     }
 
-    const updatedMenu = [...menuList, { name: newMenuName, price: priceNum }];
+    const updatedMenu = [...menuList, { name: newMenuName, price: priceNum, isSoldOut: false }];
     setMenuList(updatedMenu);
     
-    // DB 저장
-    const baseTruck = truck || {};
-    const updated = { ...baseTruck, menu: updatedMenu };
-    updateTruckInfo(session.username, updated);
-    setTruck(updated);
-
     // 입력 초기화
     setNewMenuName('');
     setNewMenuPrice('');
-    alert("✨ 새 메뉴가 등록되었습니다.");
+    alert("✨ 메뉴가 목록에 추가되었습니다. 하단의 [설정 일괄 저장하기]를 누르시면 최종 반영됩니다.");
   };
 
   // 4. 메뉴 삭제 (Delete)
   const handleDeleteMenu = (idxToRemove) => {
-    if (!confirm("정말 이 메뉴를 삭제하시겠습니까?")) return;
+    if (!confirm("정말 이 메뉴를 삭제하시겠습니까? 삭제 후 하단의 일괄 저장 버튼을 눌러야 최종 반영됩니다.")) return;
 
     const updatedMenu = menuList.filter((_, idx) => idx !== idxToRemove);
     setMenuList(updatedMenu);
-
-    const baseTruck = truck || {};
-    const updated = { ...baseTruck, menu: updatedMenu };
-    updateTruckInfo(session.username, updated);
-    setTruck(updated);
-    alert("🗑️ 메뉴가 삭제되었습니다.");
   };
 
   // 4.5 메뉴 품절 상태 토글 (isSoldOut Toggle)
@@ -163,11 +195,6 @@ export default function MyTruckManagementPage() {
       return item;
     });
     setMenuList(updatedMenu);
-
-    const baseTruck = truck || {};
-    const updated = { ...baseTruck, menu: updatedMenu };
-    updateTruckInfo(session.username, updated);
-    setTruck(updated);
   };
 
   if (!session || !truck) {
@@ -186,16 +213,16 @@ export default function MyTruckManagementPage() {
       {/* 사장님 전용 헤더 */}
       <Navbar userType="owner" truckStatus={truck.status} />
 
-      <main className="mobile-safe-bottom" style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
-        <div className="responsive-grid-2" style={{ maxWidth: '960px' }}>
+      <main className="mobile-safe-bottom" style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center' }}>
+        <div className="responsive-grid-2" style={{ maxWidth: '960px', width: '100%' }}>
           
-          {/* 1. 좌측 영역: 트럭 기본 정보 및 실시간 재고/대기 설정 */}
+          {/* 1. 좌측 영역: 트럭 정보 */}
           <section className="glass-panel" style={{ padding: '32px', height: 'fit-content' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-              🚚 트럭 프로필 & 실시간 현황
+              🚚 트럭 정보
             </h3>
 
-            <form onSubmit={handleSaveBasicInfo} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <Input
                 id="mt-name"
                 label="푸드트럭 이름"
@@ -206,37 +233,83 @@ export default function MyTruckManagementPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label className="input-label">음식 카테고리</label>
-                <select
-                  value={category}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCategory(val);
-                    if (val === 'custom') {
-                      setIsCustomMode(true);
-                    } else {
-                      setIsCustomMode(false);
-                    }
-                  }}
-                  style={{
-                    background: 'rgba(0, 0, 0, 0.02)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    padding: '14px 16px',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.95rem',
-                    outline: 'none',
-                  }}
-                >
-                  <option value="snack" style={{ background: 'var(--surface)' }}>분식 (떡볶이/튀김) 🍢</option>
-                  <option value="sweet" style={{ background: 'var(--surface)' }}>디저트 (호떡/크레페) 🥞</option>
-                  <option value="skewer" style={{ background: 'var(--surface)' }}>꼬치 (닭꼬치/염통) 🍢</option>
-                  <option value="takoyaki" style={{ background: 'var(--surface)' }}>타코야끼 🐙</option>
-                  <option value="meat" style={{ background: 'var(--surface)' }}>양식 (스테이크/버거) 🥩</option>
-                  <option value="custom" style={{ background: 'var(--surface)' }}>직접 입력하기 ✍️</option>
-                </select>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {/* 대분류 */}
+                  <select
+                    value={mainCategory}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMainCategory(val);
+                      if (val === 'custom') {
+                        setIsCustomMode(true);
+                        setSubCategory('');
+                      } else {
+                        setIsCustomMode(false);
+                        const availableSubs = dbCategories.filter(c => c.category === val);
+                        if (availableSubs.length > 0) {
+                          setSubCategory(availableSubs[0].subCategory);
+                        } else {
+                          setSubCategory('');
+                        }
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(0, 0, 0, 0.02)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '12px',
+                      padding: '14px 16px',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.95rem',
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="" disabled hidden>대분류 선택</option>
+                    <option value="snack" style={{ background: 'var(--surface)' }} hidden>분식 (떡볶이/튀김) 🍢</option>
+                    <option value="sweet" style={{ background: 'var(--surface)' }} hidden>디저트 (호떡/크레페) 🥞</option>
+                    <option value="skewer" style={{ background: 'var(--surface)' }} hidden>꼬치 (닭꼬치/염통) 🍢</option>
+                    <option value="takoyaki" style={{ background: 'var(--surface)' }} hidden>타코야끼 🐙</option>
+                    <option value="meat" style={{ background: 'var(--surface)' }} hidden>양식 (스테이크/버거) 🥩</option>
+
+                    {Array.from(new Set(dbCategories.map(cat => cat.category))).map(mainCat => (
+                      <option key={mainCat} value={mainCat} style={{ background: 'var(--surface)' }}>
+                        {mainCat}
+                      </option>
+                    ))}
+                    <option value="custom" style={{ background: 'var(--surface)' }}>직접 입력하기 ✍️</option>
+                  </select>
+
+                  {/* 소분류 */}
+                  {!isCustomMode && !DEFAULT_CATS.includes(mainCategory) && (
+                    <select
+                      value={subCategory}
+                      onChange={(e) => setSubCategory(e.target.value)}
+                      disabled={!mainCategory}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(0, 0, 0, 0.02)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem',
+                        outline: 'none',
+                        opacity: !mainCategory ? 0.6 : 1,
+                      }}
+                    >
+                      <option value="" disabled hidden>소분류 선택</option>
+                      {dbCategories
+                        .filter(cat => cat.category === mainCategory)
+                        .map(cat => (
+                          <option key={cat.id} value={cat.subCategory} style={{ background: 'var(--surface)' }}>
+                            {cat.subCategory}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
               </div>
 
-              {/* 💡 직접 입력 모드 활성화 시 텍스트 인풋 표출 */}
               {isCustomMode && (
                 <div style={{ marginTop: '2px' }}>
                   <Input
@@ -269,46 +342,20 @@ export default function MyTruckManagementPage() {
                   }}
                 />
               </div>
-
-              {/* ⚠️ 실시간 재고 & 대기 제어 단추 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <Input
-                  id="mt-stock"
-                  label="실시간 재고 수량 (개)"
-                  type="number"
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  required
-                />
-                
-                <Input
-                  id="mt-waiting"
-                  label="실시간 대기 줄 (팀)"
-                  type="number"
-                  value={waitingTeams}
-                  onChange={(e) => setWaitingTeams(e.target.value)}
-                  required
-                />
-              </div>
-
-              <Button type="submit" variant="primary" style={{ marginTop: '10px' }}>
-                설정 일괄 저장하기
-              </Button>
-            </form>
+            </div>
           </section>
 
-          {/* 2. 우측 영역: 메뉴 관리 CRUD */}
+          {/* 2. 우측 영역: 푸드트럭 메뉴관리 */}
           <section className="glass-panel" style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div>
               <h3 style={{ fontSize: '1.25rem', fontWeight: '700', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                🍽️ 메뉴 통합 관리 (CRUD)
+                🍽️ 푸드트럭 메뉴관리
               </h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
                 판매할 대표 메뉴를 자유롭게 등록 및 삭제할 수 있습니다.
               </p>
             </div>
 
-            {/* 신규 메뉴 등록 폼 */}
             <form onSubmit={handleAddMenu} className="glass-panel" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)' }}>+ 새 메뉴 등록</span>
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '12px' }}>
@@ -331,7 +378,6 @@ export default function MyTruckManagementPage() {
               </Button>
             </form>
 
-            {/* 메뉴 리스트 조회 및 삭제 */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '300px' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
                 등록된 메뉴 ({menuList.length})
@@ -362,37 +408,19 @@ export default function MyTruckManagementPage() {
                         fontSize: '0.9rem',
                         background: 'var(--surface-light)',
                         border: '1px solid var(--border)',
-                        opacity: item.isSoldOut ? 0.6 : 1, // 품절 시 흐리게 처리
+                        opacity: item.isSoldOut ? 0.6 : 1,
                         transition: 'opacity 0.2s'
                       }}
                     >
                       <div>
-                        <span style={{ 
-                          fontWeight: '600', 
-                          color: 'var(--text-primary)',
-                          textDecoration: item.isSoldOut ? 'line-through' : 'none' // 품절 시 취소선
-                        }}>
+                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', textDecoration: item.isSoldOut ? 'line-through' : 'none' }}>
                           {item.name}
                         </span>
-                        <span style={{ 
-                          color: 'var(--accent)', 
-                          marginLeft: '12px', 
-                          fontWeight: '600',
-                          textDecoration: item.isSoldOut ? 'line-through' : 'none'
-                        }}>
+                        <span style={{ color: 'var(--accent)', marginLeft: '12px', fontWeight: '600', textDecoration: item.isSoldOut ? 'line-through' : 'none' }}>
                           {item.price.toLocaleString()}원
                         </span>
                         {item.isSoldOut && (
-                          <span style={{
-                            marginLeft: '8px',
-                            fontSize: '0.7rem',
-                            fontWeight: '850',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: 'rgba(214, 48, 49, 0.1)',
-                            color: '#D63031',
-                            border: '1px solid rgba(214, 48, 49, 0.2)'
-                          }}>
+                          <span style={{ marginLeft: '8px', fontSize: '0.7rem', fontWeight: '850', padding: '2px 6px', borderRadius: '4px', background: 'rgba(214, 48, 49, 0.1)', color: '#D63031', border: '1px solid rgba(214, 48, 49, 0.2)' }}>
                             품절 🔴
                           </span>
                         )}
@@ -423,8 +451,6 @@ export default function MyTruckManagementPage() {
                             border: '1px solid rgba(214, 48, 49, 0.2)',
                             transition: 'all 0.2s',
                           }}
-                          onMouseEnter={(e) => e.target.style.background = 'var(--danger)'}
-                          onMouseLeave={(e) => e.target.style.background = 'rgba(214, 48, 49, 0.1)'}
                         >
                           삭제
                         </button>
@@ -434,9 +460,14 @@ export default function MyTruckManagementPage() {
                 </div>
               )}
             </div>
-
           </section>
+        </div>
 
+        {/* 3. 하단 저장 버튼 영역 (통합) */}
+        <div style={{ maxWidth: '960px', width: '100%', marginTop: '24px' }}>
+          <Button onClick={handleSaveAll} variant="primary" style={{ width: '100%', padding: '16px', fontSize: '1.1rem' }}>
+            설정 일괄 저장하기
+          </Button>
         </div>
       </main>
     </div>

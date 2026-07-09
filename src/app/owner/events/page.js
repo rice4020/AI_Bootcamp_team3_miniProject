@@ -70,6 +70,17 @@ export default function OwnerSalesHistoryPage() {
   const [inputQuantity, setInputQuantity] = useState('750');
   const [inputWeather, setInputWeather] = useState('맑음');
 
+  // 🎡 주변 행사/축제 목록 상태
+  const [eventsList, setEventsList] = useState([]);
+  // 📌 선택된 행사 (상세 모달용)
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  // ⏳ 행사 데이터 로딩 중 여부
+  const [isEventsLoading, setIsEventsLoading] = useState(false);
+  // ➕ 더보기 표출 개수
+  const [visibleCount, setVisibleCount] = useState(10);
+  // 🔍 필터 타입 (all | public | sns)
+  const [filterType, setFilterType] = useState('all');
+
   // 1. 로그인 세션 확인 및 데이터 로드
   useEffect(() => {
     const userSession = getCurrentSession();
@@ -139,6 +150,26 @@ export default function OwnerSalesHistoryPage() {
       }
     };
     fetchGovSpots();
+  }, []);
+
+  // 1.6 주변 행사/축제 목록 API 호출
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setIsEventsLoading(true);
+      try {
+        // 📡 /api/events에서 Event + SnsExtraction UNION 결과 가져오기
+        const res = await fetch('/api/events?lat=37.5665&lng=126.9780&radius=');
+        const data = await res.json();
+        if (data.success && data.data) {
+          setEventsList(data.data); // API 응답 필드명: data.data
+        }
+      } catch (err) {
+        console.warn('⚠️ 행사 데이터 로드 실패:', err);
+      } finally {
+        setIsEventsLoading(false);
+      }
+    };
+    fetchEvents();
   }, []);
 
   // 💾 매출 정보 신규 등록
@@ -228,270 +259,242 @@ export default function OwnerSalesHistoryPage() {
 
       <main className="mobile-safe-bottom" style={{ flex: 1, padding: '40px 24px', display: 'flex', justifyContent: 'center' }}>
         <div className="glass-panel" style={{ width: '100%', maxWidth: '850px', padding: '36px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
-          {/* 타이틀 */}
+
+          {/* 🎡 행사/축제 목록 섹션 */}
           <div>
-            <h2 style={{ fontSize: '1.45rem', fontWeight: '800', marginBottom: '8px', color: 'var(--text-primary)' }}>
-              📈 영업 이력 기록 및 상권 효율성 분석기
+            <h2 style={{ fontSize: '1.45rem', fontWeight: '800', marginBottom: '4px', color: 'var(--text-primary)' }}>
+              🎡 주변 행사 및 축제 정보
             </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-              매일 마감 후 매출과 판매 수량을 기록해 보세요. <br />
-              지도의 상권 유동인구와 사장님의 실제 판매 데이터를 교차 대조하여 **어디서 어떤 날씨에 가장 효율적으로 장사했는지** 과학적으로 분석해 드립니다.
-            </p>
-          </div>
-
-          {/* 📊 상단 누적 핵심 요약 카드 그룹 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-            <div style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: '16px', padding: '18px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '700' }}>💰 누적 총 매출</span>
-              <h4 style={{ fontSize: '1.25rem', fontWeight: '800', margin: '4px 0 0', color: 'var(--primary)' }}>
-                {totalRevenue.toLocaleString()}원
-              </h4>
-            </div>
-            <div style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: '16px', padding: '18px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '700' }}>👥 평균 유동인구 대비 전환율</span>
-              <h4 style={{ fontSize: '1.25rem', fontWeight: '800', margin: '4px 0 0', color: '#0984e3' }}>
-                {avgEfficiency}%
-              </h4>
-            </div>
-            <div style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: '16px', padding: '18px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '700' }}>🏆 최고 효율 스팟</span>
-              <h4 style={{ fontSize: '0.82rem', fontWeight: '800', margin: '6px 0 0', color: 'var(--success)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={bestSpot.name}>
-                {bestSpot.name.split(' ')[0] || "기록 없음"} ({bestSpot.efficiency > 0 ? `${bestSpot.efficiency}%` : '-'})
-              </h4>
-            </div>
-          </div>
-
-          {/* 📝 영업 이력 등록 폼 */}
-          <form onSubmit={handleAddHistory} style={{
-            background: 'var(--surface-light)',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px'
-          }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: '800', margin: 0, color: 'var(--text-primary)' }}>
-              ✍️ 오늘의 영업 이력 입력
-            </h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>영업 일자</label>
-                <input
-                  type="date"
-                  value={inputDate}
-                  onChange={(e) => setInputDate(e.target.value)}
-                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem', outline: 'none' }}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>영업 날씨</label>
-                <select
-                  value={inputWeather}
-                  onChange={(e) => setInputWeather(e.target.value)}
-                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem', outline: 'none', background: '#FFFFFF' }}
-                >
-                  <option value="맑음">맑음 ☀️</option>
-                  <option value="흐림">흐림 ☁️</option>
-                  <option value="비">비 ☔</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>영업 장소 (허가구역)</label>
-              <select
-                value={selectedSpotName}
-                onChange={(e) => setSelectedSpotName(e.target.value)}
-                style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem', outline: 'none', background: '#FFFFFF' }}
-                required
-              >
-                {spotsList.map((s, idx) => (
-                  <option key={idx} value={s.name}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>하루 총 매출액 (원)</label>
-                <input
-                  type="number"
-                  placeholder="예: 1200000"
-                  value={inputRevenue}
-                  onChange={(e) => setInputRevenue(e.target.value)}
-                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem', outline: 'none' }}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-secondary)' }}>총 판매 수량 (개)</label>
-                <input
-                  type="number"
-                  placeholder="예: 600"
-                  value={inputQuantity}
-                  onChange={(e) => setInputQuantity(e.target.value)}
-                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem', outline: 'none' }}
-                  required
-                />
-              </div>
-            </div>
-
-            <Button variant="primary" type="submit" style={{ padding: '11px', fontSize: '0.82rem', fontWeight: '800' }}>
-              📊 매출 및 효율성 데이터 분석 제출
-            </Button>
-          </form>
-
-          {/* 🎯 데이터 기반 스마트 영업 가이드 리포트 (처방) */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(9, 132, 227, 0.04) 100%)',
-            borderRadius: '16px',
-            padding: '20px',
-            border: '1px solid rgba(255, 107, 53, 0.15)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px'
-          }}>
-            <h4 style={{ margin: 0, fontSize: '0.82rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              💡 데이터 기반 맞춤형 장사 전략 가이드
-            </h4>
-            
-            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '8px', lineHeight: '1.5' }}>
-              {bestSpot.efficiency > 0 ? (
-                <li>
-                  사장님은 <strong>[{bestSpot.name}]</strong>에서 장사하셨을 때 유동인구 대비 매출 전환율이 <strong>{bestSpot.efficiency}%</strong>로 가장 고효율의 판매를 이뤄내셨습니다. 해당 장소를 1순위 스케줄로 확보하는 것을 추천해 드립니다.
-                </li>
-              ) : (
-                <li>현재 수집된 매출 이력이 부족하여 최고 스팟을 도출하는 중입니다. 매출을 계속 입력해 주세요.</li>
-              )}
-              {avgSunnyRevenue > 0 && avgBadRevenue > 0 && (
-                <li>
-                  기상 데이터 비교 분석 결과, 맑은 날 일평균 매출(<strong>{avgSunnyRevenue.toLocaleString()}원</strong>)이 궂은 날(<strong>{avgBadRevenue.toLocaleString()}원</strong>) 대비 약 <strong>{Math.round((avgSunnyRevenue / avgBadRevenue) * 100 - 100)}%</strong> 높습니다. 흐리거나 비가 예보된 날에는 공원보다는 실내 유동인구 비중이 높은 지하철역 인근이나 아파트 수요 장터로 대피하고 식자재 재고를 <strong>30% 이상 감축</strong>하여 폐기를 방지하세요.
-                </li>
-              )}
-              <li>
-                누적 총 판매량은 <strong>{totalQuantity.toLocaleString()}개</strong>이며, 상권 유동인구 대비 평균 전환율은 <strong>{avgEfficiency}%</strong>입니다. 전환율이 2%를 초과하는 날은 상권 매력도가 우수한 날이므로, 주변 축제와 연계된 영업 시작을 적극적으로 제안합니다.
-              </li>
-            </ul>
-          </div>
-
-          {/* 📊 영업 이력 대조 막대그래프 시각화 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: '800', margin: 0, color: 'var(--text-primary)' }}>
-              ⚖️ 스팟별 유동인구 대비 매출 전환율 (%) 비교
-            </h3>
-            
-            <div style={{
-              background: '#FFFFFF',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '24px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              boxShadow: 'var(--shadow-sm)'
-            }}>
-              {historyList.slice(0, 5).map((item, index) => {
-                const eff = parseFloat(getEfficiency(item));
-                // 최대 효율 기준 백분율 바 너비 계산 (최대 4%로 보정하여 바 길이 연산)
-                const barWidth = Math.min(100, (eff / 4.0) * 100);
-
-                return (
-                  <div key={item.id || index} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-main)', fontWeight: '700' }}>
-                      <span>🗓️ {item.date} - {item.spotName} ({item.weather})</span>
-                      <span style={{ color: '#0984e3' }}>전환 효율: {eff}%</span>
-                    </div>
-                    <div style={{ width: '100%', height: '14px', background: 'rgba(0,0,0,0.03)', borderRadius: '7px', overflow: 'hidden', display: 'flex' }}>
-                      <div style={{
-                        width: `${barWidth}%`,
-                        background: eff >= 2.0 
-                          ? 'linear-gradient(90deg, #0984e3 0%, #55efc4 100%)' 
-                          : 'linear-gradient(90deg, var(--primary) 0%, #fdcb6e 100%)',
-                        borderRadius: '7px',
-                        transition: 'width 0.8s ease-out-in'
-                      }} />
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+                수집된 공공데이터 기반 행사 목록입니다. 행사를 클릭하면 상세 정보를 볼 수 있습니다.
+              </p>
               
-              {historyList.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '20px 0' }}>
-                  표출할 매출 이력 데이터가 없습니다. 상단에서 이력을 등록해 주세요.
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => { setFilterType('all'); setVisibleCount(10); }}
+                  style={{
+                    padding: '6px 12px', borderRadius: '20px', border: '1px solid #dfe6e9', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s',
+                    background: filterType === 'all' ? '#2d3436' : '#ffffff',
+                    color: filterType === 'all' ? '#ffffff' : '#636e72'
+                  }}>
+                  전체 보기
+                </button>
+                <button 
+                  onClick={() => { setFilterType('public'); setVisibleCount(10); }}
+                  style={{
+                    padding: '6px 12px', borderRadius: '20px', border: '1px solid #dfe6e9', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s',
+                    background: filterType === 'public' ? '#0984e3' : '#ffffff',
+                    color: filterType === 'public' ? '#ffffff' : '#636e72'
+                  }}>
+                  공공데이터
+                </button>
+                <button 
+                  onClick={() => { setFilterType('sns'); setVisibleCount(10); }}
+                  style={{
+                    padding: '6px 12px', borderRadius: '20px', border: '1px solid #dfe6e9', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s',
+                    background: filterType === 'sns' ? '#e17055' : '#ffffff',
+                    color: filterType === 'sns' ? '#ffffff' : '#636e72'
+                  }}>
+                  SNS 수집
+                </button>
+              </div>
             </div>
+
+            {/* 행사 목록 */}
+            {isEventsLoading ? (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>⏳ 행사 정보 불러오는 중...</p>
+            ) : (() => {
+              const filteredList = eventsList.filter(ev => {
+                if (filterType === 'all') return true;
+                const isSns = ev.sourceTable === 'SnsExtraction' || ev.source === '인스타그램 핫플 크롤링' || ev.source === '트위터 실시간 트렌드';
+                if (filterType === 'sns') return isSns;
+                if (filterType === 'public') return !isSns;
+                return true;
+              });
+
+              return filteredList.length === 0 ? (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>선택한 조건에 맞는 행사 정보가 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {filteredList.slice(0, visibleCount).map((ev, idx) => {
+                  // 수집 유형 판별: sourceTable로 출처 구분 (Event=공공, SnsExtraction=SNS 수집, isMock=더미)
+                  const isMock = ev.isMock || false;
+                  const sourceTable = ev.sourceTable || 'Event';
+                  const sourceLabel = isMock
+                    ? '더미'
+                    : sourceTable === 'SnsExtraction'
+                      ? 'SNS 수집'
+                      : '공공데이터';
+                  const badgeColor = isMock
+                    ? { bg: 'rgba(100,100,100,0.1)', color: '#888' }
+                    : sourceTable === 'SnsExtraction'
+                      ? { bg: 'rgba(230, 81, 0, 0.1)', color: '#E65100' }   // 주황 - SNS 수집
+                      : { bg: 'rgba(0, 123, 255, 0.1)', color: '#007bff' }; // 파랑 - 공공데이터
+
+                  return (
+                    <div
+                      key={ev.id || idx}
+                      onClick={() => setSelectedEvent(ev)}
+                      style={{
+                        padding: '14px 16px',
+                        background: '#fff',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        boxShadow: 'var(--shadow-sm)',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '5px'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = 'var(--shadow-sm)'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* 행사명 */}
+                        <span style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--text-primary)', flex: 1 }}>
+                          {ev.title || ev.name || '행사명 미정'}
+                        </span>
+                        {/* 수집 유형 배지 */}
+                        <span style={{
+                          fontSize: '0.62rem', fontWeight: '800',
+                          padding: '2px 7px', borderRadius: '4px',
+                          background: badgeColor.bg, color: badgeColor.color,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {sourceLabel}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          📅 {ev.startDate || '일정 미정'}{ev.endDate && ev.endDate !== ev.startDate ? ` ~ ${ev.endDate}` : ''}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          📍 {ev.location || '장소 미정'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredList.length > visibleCount && (
+                  <button
+                    onClick={() => setVisibleCount(prev => prev + 10)}
+                    style={{
+                      marginTop: '10px',
+                      padding: '12px',
+                      background: '#f1f2f6',
+                      color: '#2d3436',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '0.9rem',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    더보기 ({visibleCount} / {filteredList.length})
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           </div>
 
-          {/* 📋 등록된 영업 이력 테이블 리스트 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: '800', margin: 0, color: 'var(--text-primary)' }}>
-              📋 영업 히스토리 목록
-            </h3>
-            
-            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--surface-light)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)' }}>날짜</th>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)' }}>영업 장소</th>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)', textAlign: 'center' }}>날씨</th>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)', textAlign: 'right' }}>하루 매출</th>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)', textAlign: 'center' }}>판매 수량</th>
-                    <th style={{ padding: '10px 14px', fontWeight: '800', color: 'var(--text-secondary)', textAlign: 'center' }}>삭제</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyList.map(item => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)', background: '#FFFFFF' }}>
-                      <td style={{ padding: '12px 14px', fontWeight: '700', color: 'var(--text-secondary)' }}>{item.date}</td>
-                      <td style={{ padding: '12px 14px', fontWeight: '700', color: 'var(--text-main)' }}>{item.spotName}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        {item.weather === '맑음' ? '☀️' : item.weather === '흐림' ? '☁️' : '☔'} {item.weather}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>
-                        {item.revenue.toLocaleString()}원
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '700' }}>
-                        {item.quantity}개 <span style={{ fontSize: '0.66rem', color: '#0984e3', marginLeft: '4px' }}>({getEfficiency(item)}%)</span>
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleRemoveHistory(item.id)}
-                          style={{
-                            padding: '3px 8px',
-                            background: 'rgba(214, 48, 49, 0.1)',
-                            color: '#D63031',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '0.7rem',
-                            fontWeight: '700',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          제거
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  
-                  {historyList.length === 0 && (
-                    <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                        등록된 이력이 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          {/* 행사 상세 모달 */}
+          {selectedEvent && (
+            <div
+              onClick={() => setSelectedEvent(null)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.45)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '24px'
+              }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: '#fff',
+                  borderRadius: '20px',
+                  padding: '32px',
+                  maxWidth: '520px',
+                  width: '100%',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  maxHeight: '80vh',
+                  overflowY: 'auto'
+                }}
+              >
+                {/* 모달 헤더 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: '1.4', flex: 1 }}>
+                    🎡 {selectedEvent.title || selectedEvent.name || '행사명 미정'}
+                  </h3>
+                  <button
+                    onClick={() => setSelectedEvent(null)}
+                    style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: '12px' }}
+                  >✕</button>
+                </div>
+
+                {/* 수집 유형 배지 */}
+                <div>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: '800',
+                    padding: '3px 9px', borderRadius: '5px',
+                    background: selectedEvent.isMock
+                      ? 'rgba(100,100,100,0.1)'
+                      : (selectedEvent.sourceTable === 'SnsExtraction' ? 'rgba(230,81,0,0.1)' : 'rgba(0,123,255,0.1)'),
+                    color: selectedEvent.isMock
+                      ? '#888'
+                      : (selectedEvent.sourceTable === 'SnsExtraction' ? '#E65100' : '#007bff')
+                  }}>
+                    수집유형: {selectedEvent.isMock ? '더미 데이터' : (selectedEvent.sourceTable === 'SnsExtraction' ? 'SNS 수집 데이터' : (selectedEvent.source || '공공데이터포털'))}
+                  </span>
+                </div>
+
+                {/* 상세 정보 행 */}
+                {[
+                  { label: '📅 기간', value: selectedEvent.startDate
+                    ? `${selectedEvent.startDate}${selectedEvent.endDate && selectedEvent.endDate !== selectedEvent.startDate ? ` ~ ${selectedEvent.endDate}` : ''}`
+                    : '일정 미정' },
+                  { label: '📍 장소', value: selectedEvent.location || '장소 미정' },
+                  { label: '🏢 주최기관', value: selectedEvent.organizer || selectedEvent.source || '미정' },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-light)',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <p style={{ margin: '0 0 3px', fontSize: '0.68rem', fontWeight: '800', color: 'var(--text-muted)' }}>{label}</p>
+                    <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>{value}</p>
+                  </div>
+                ))}
+
+                {/* 행사 내용 */}
+                {(selectedEvent.description || selectedEvent.desc) && (
+                  <div style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-light)',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <p style={{ margin: '0 0 6px', fontSize: '0.68rem', fontWeight: '800', color: 'var(--text-muted)' }}>📝 행사 내용</p>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                      {selectedEvent.description || selectedEvent.desc}
+                    </p>
+                  </div>
+                )}
+
+                <Button variant="secondary" onClick={() => setSelectedEvent(null)} style={{ marginTop: '4px' }}>
+                  닫기
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </main>

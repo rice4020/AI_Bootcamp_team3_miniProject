@@ -274,7 +274,18 @@ export function updateTruckInfo(username, updatedTruck) {
   fetch('/api/trucks', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...updatedTruck, ownerUsername: username })
+    body: JSON.stringify({
+      ownerUsername: username,
+      name: updatedTruck.name,
+      category: updatedTruck.category,
+      intro: updatedTruck.intro,
+      menu: updatedTruck.menu,
+      stock: updatedTruck.stock,
+      waitingTeams: updatedTruck.waitingTeams,
+      status: updatedTruck.status,
+      lat: updatedTruck.lat,
+      lng: updatedTruck.lng
+    })
   })
   .then(res => res.json())
   .then(json => {
