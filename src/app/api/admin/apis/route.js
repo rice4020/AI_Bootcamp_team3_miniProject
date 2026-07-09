@@ -390,11 +390,13 @@ export async function GET(request) {
         weatherTotal,
         commercialTotal,
         culturalTotal,
+        snsTotal: 0,
         weatherStatus,
         spotsStatus,
         naverStatus,
         commercialStatus,
-        culturalStatus
+        culturalStatus,
+        snsStatus: 'inactive'
       };
 
       if (hasDb) {
@@ -419,6 +421,16 @@ export async function GET(request) {
           // ⛅ WeatherForecast 테이블 행 수 및 최신 정보 조회 연동
           const weatherCountRes = await dbPool.query('SELECT COUNT(*) as count FROM "WeatherForecast"');
           stats.weatherTotal = parseInt(weatherCountRes.rows[0].count) || 0;
+
+          // 📱 SnsExtraction 테이블 행 수 및 상태 조회 추가 연동
+          try {
+            const snsCountRes = await dbPool.query('SELECT COUNT(*) as count FROM "SnsExtraction"');
+            stats.snsTotal = parseInt(snsCountRes.rows[0].count) || 0;
+            stats.snsStatus = "active";
+          } catch (snsErr) {
+            console.warn("SnsExtraction 테이블 개수 조회 실패:", snsErr.message);
+            stats.snsStatus = "inactive";
+          }
 
           const weatherLatestRes = await dbPool.query('SELECT "skyStatus", temperature FROM "WeatherForecast" ORDER BY id DESC LIMIT 1');
           if (weatherLatestRes.rows.length > 0) {
