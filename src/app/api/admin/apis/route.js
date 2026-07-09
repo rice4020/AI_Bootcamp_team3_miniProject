@@ -324,31 +324,34 @@ export async function GET(request) {
     if (hasDb) {
       try {
         await dbPool.query(`
-          CREATE TABLE IF NOT EXISTS legal_spots (
-            id VARCHAR(100) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            lat DOUBLE PRECISION NOT NULL,
-            lng DOUBLE PRECISION NOT NULL,
-            rules TEXT,
+          CREATE TABLE IF NOT EXISTS "Spot" (
+            id VARCHAR(50) PRIMARY KEY,
+            name VARCHAR(150) NOT NULL,
+            address VARCHAR(255) NOT NULL,
+            latitude NUMERIC(10, 6) NOT NULL,
+            longitude NUMERIC(10, 6) NOT NULL,
+            "rulesDescription" TEXT,
             approved BOOLEAN DEFAULT TRUE,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
-        await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
+        await dbPool.query('ALTER TABLE "Spot" ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
 
         // 💡 테이블 데이터가 텅 비었는지(0건) 확인하여 비어있다면 자동 시딩(Seeding) 수행
-        const countCheck = await dbPool.query('SELECT COUNT(*) as count FROM legal_spots');
+        const countCheck = await dbPool.query('SELECT COUNT(*) as count FROM "Spot"');
         const dbCount = parseInt(countCheck.rows[0].count || '0');
         if (dbCount === 0) {
           console.log("ℹ️ [Admin API] Neon DB 테이블이 비어있습니다. 백업 30대 명당을 자동 시딩합니다...");
           await dbPool.query('BEGIN');
           try {
             for (const spot of FALLBACK_LEGAL_SPOTS) {
+              const address = spot.rules.includes("소재지: ") ? spot.rules.split("소재지: ")[1] : "주소 정보 없음";
               await dbPool.query(`
-                INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                INSERT INTO "Spot" (id, name, latitude, longitude, "rulesDescription", approved, address, "updatedAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (id) DO NOTHING
-              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true]);
+              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, address]);
             }
             await dbPool.query('COMMIT');
             console.log("✅ [Admin API] Neon DB 백업 30대 명당 시딩 완료!");
@@ -402,7 +405,7 @@ export async function GET(request) {
               COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
               COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
               COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
-            FROM legal_spots
+            FROM "Spot"
           `);
           stats.total = parseInt(countRes.rows[0].count) || 0;
           stats.approved = parseInt(countRes.rows[0].approved_count) || 0;
@@ -550,11 +553,11 @@ export async function GET(request) {
         const countRes = await dbPool.query(`
           SELECT 
             COUNT(*) as count, 
-            MAX(updated_at) as last_update,
+            MAX("updatedAt") as last_update,
             COUNT(CASE WHEN approved = TRUE THEN 1 END) as approved_count,
             COUNT(CASE WHEN approved = FALSE THEN 1 END) as rejected_count,
             COUNT(CASE WHEN approved IS NULL THEN 1 END) as pending_count
-          FROM legal_spots
+          FROM "Spot"
         `);
         spotsCount = parseInt(countRes.rows[0].count) || 0;
         if (countRes.rows[0].last_update) {
@@ -571,7 +574,7 @@ export async function GET(request) {
 
         // 상세 검수용 데이터 페이징 조회 적용 (위도, 경도 추가)
         const listRes = await dbPool.query(
-          'SELECT id, name, rules, approved, lat, lng FROM legal_spots ORDER BY updated_at DESC, id ASC LIMIT $1 OFFSET $2',
+          'SELECT id, name, "rulesDescription" AS rules, approved, latitude AS lat, longitude AS lng, address FROM "Spot" ORDER BY "updatedAt" DESC, id ASC LIMIT $1 OFFSET $2',
           [limit, offset]
         );
 
@@ -882,17 +885,19 @@ export async function POST(request) {
     if (hasDb) {
       try {
         await dbPool.query(`
-          CREATE TABLE IF NOT EXISTS legal_spots (
-            id VARCHAR(100) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            lat NUMERIC(10, 8),
-            lng NUMERIC(11, 8),
-            rules TEXT,
+          CREATE TABLE IF NOT EXISTS "Spot" (
+            id VARCHAR(50) PRIMARY KEY,
+            name VARCHAR(150) NOT NULL,
+            address VARCHAR(255) NOT NULL,
+            latitude NUMERIC(10, 6) NOT NULL,
+            longitude NUMERIC(10, 6) NOT NULL,
+            "rulesDescription" TEXT,
             approved BOOLEAN DEFAULT TRUE,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
-        await dbPool.query('ALTER TABLE legal_spots ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
+        await dbPool.query('ALTER TABLE "Spot" ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT TRUE');
       } catch (tableErr) {
         console.error("Neon DB 테이블 자동 생성 실패:", tableErr.message);
       }
@@ -1003,16 +1008,18 @@ export async function POST(request) {
           await dbPool.query('BEGIN');
           try {
             for (const spot of FALLBACK_LEGAL_SPOTS) {
+              const address = spot.rules.includes("소재지: ") ? spot.rules.split("소재지: ")[1] : "주소 정보 없음";
               await dbPool.query(`
-                INSERT INTO legal_spots (id, name, lat, lng, rules, approved, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO "Spot" (id, name, latitude, longitude, "rulesDescription", approved, address, "updatedAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (id) DO UPDATE SET
                   name = EXCLUDED.name,
-                  lat = EXCLUDED.lat,
-                  lng = EXCLUDED.lng,
-                  rules = EXCLUDED.rules,
-                  updated_at = EXCLUDED.updated_at
-              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, getKstDate()]);
+                  latitude = EXCLUDED.latitude,
+                  longitude = EXCLUDED.longitude,
+                  "rulesDescription" = EXCLUDED."rulesDescription",
+                  address = EXCLUDED.address,
+                  "updatedAt" = EXCLUDED."updatedAt"
+              `, [spot.id, spot.name, spot.lat, spot.lng, spot.rules, true, address, getKstDate()]);
             }
             await dbPool.query('COMMIT');
 
@@ -1052,15 +1059,16 @@ export async function POST(request) {
                 const id = `gov-spot-${i}`;
 
                 await dbPool.query(`
-                  INSERT INTO legal_spots (id, name, lat, lng, rules, updated_at)
-                  VALUES ($1, $2, $3, $4, $5, $6)
+                  INSERT INTO "Spot" (id, name, latitude, longitude, "rulesDescription", address, "updatedAt")
+                  VALUES ($1, $2, $3, $4, $5, $6, $7)
                   ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name,
-                    lat = EXCLUDED.lat,
-                    lng = EXCLUDED.lng,
-                    rules = EXCLUDED.rules,
-                    updated_at = EXCLUDED.updated_at
-                `, [id, name, lat, lng, rulesText, getKstDate()]);
+                    latitude = EXCLUDED.latitude,
+                    longitude = EXCLUDED.longitude,
+                    "rulesDescription" = EXCLUDED."rulesDescription",
+                    address = EXCLUDED.address,
+                    "updatedAt" = EXCLUDED."updatedAt"
+                `, [id, name, lat, lng, rulesText, address, getKstDate()]);
               }
             }
             await dbPool.query('COMMIT');
@@ -1258,9 +1266,9 @@ export async function POST(request) {
       }
 
       try {
-        // Neon DB 상의 legal_spots 테이블에서 해당 스팟의 approved 컬럼을 업데이트
+        // Neon DB 상의 Spot 테이블에서 해당 스팟의 approved 컬럼을 업데이트
         const updateRes = await dbPool.query(
-          'UPDATE legal_spots SET approved = $1, updated_at = $2 WHERE id = $3',
+          'UPDATE "Spot" SET approved = $1, "updatedAt" = $2 WHERE id = $3',
           [isApprove, getKstDate(), detailId]
         );
 
