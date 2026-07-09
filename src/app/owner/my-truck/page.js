@@ -280,10 +280,11 @@ export default function MyTruckManagementPage() {
                   </select>
 
                   {/* 소분류 */}
-                  {!isCustomMode && mainCategory && !DEFAULT_CATS.includes(mainCategory) && (
+                  {!isCustomMode && !DEFAULT_CATS.includes(mainCategory) && (
                     <select
                       value={subCategory}
                       onChange={(e) => setSubCategory(e.target.value)}
+                      disabled={!mainCategory}
                       style={{
                         flex: 1,
                         background: 'rgba(0, 0, 0, 0.02)',
@@ -293,8 +294,10 @@ export default function MyTruckManagementPage() {
                         color: 'var(--text-primary)',
                         fontSize: '0.95rem',
                         outline: 'none',
+                        opacity: !mainCategory ? 0.6 : 1,
                       }}
                     >
+                      <option value="" disabled hidden>소분류 선택</option>
                       {dbCategories
                         .filter(cat => cat.category === mainCategory)
                         .map(cat => (

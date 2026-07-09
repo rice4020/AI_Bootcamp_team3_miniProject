@@ -314,7 +314,7 @@ export async function POST(request) {
 
     const result = await sql`
       INSERT INTO "Event" ("title", "location", "startDate", "endDate", "scale", "latitude", "longitude", "description")
-      VALUES (${title}, ${formatted}, ${startDate}, ${endDate}, ${scale || '미지정'}, ${lat}, ${lng}, ${description || ''})
+      VALUES (${title}, ${location}, ${startDate}, ${endDate}, ${scale || '미지정'}, ${lat}, ${lng}, ${description || ''})
       RETURNING "id"
     `;
 
@@ -362,7 +362,7 @@ export async function PUT(request) {
     await sql`
       UPDATE "Event"
       SET "title" = ${title},
-          "location" = ${formatted},
+          "location" = ${location},
           "startDate" = ${startDate}::date,
           "endDate" = ${endDate}::date,
           "scale" = ${scale || '미지정'},

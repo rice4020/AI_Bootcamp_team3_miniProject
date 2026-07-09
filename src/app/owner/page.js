@@ -1690,8 +1690,8 @@ function OwnerMapContent() {
       {apiKey && !isMapError && (
         <Script
           src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${apiKey}&submodules=geocoder`}
-          strategy="lazyOnload"
-          onLoad={() => setIsSdkLoaded(true)}
+          strategy="afterInteractive"
+          onReady={() => setIsSdkLoaded(true)}
           onError={() => {
             console.error("⚠️ 네이버 지도 SDK 로드 실패! 자동으로 오픈스트리트맵(OSM) 모드로 전환합니다.");
             localStorage.setItem('roadfood_map_provider', 'osm'); // 💡 자가 복구
@@ -1713,8 +1713,8 @@ function OwnerMapContent() {
             src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossOrigin=""
-            strategy="lazyOnload"
-            onLoad={() => setIsLeafletLoaded(true)}
+            strategy="afterInteractive"
+            onReady={() => setIsLeafletLoaded(true)}
           />
         </>
       )}

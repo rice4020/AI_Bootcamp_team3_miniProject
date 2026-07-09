@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -44,7 +44,7 @@ export default function Navbar({
         return [
           { label: "현황", href: "/admin/dashboard", icon: "📊" },
           { label: "API관리", href: "/admin/apis", icon: "🔌" },
-          { label: "컨텐츠", href: "/admin/content", icon: "🎪" },
+          { label: "행사/이벤트 관리", href: "/admin/content", icon: "🎪" },
           { label: "회원정지", href: "/admin/members", icon: "👥" },
         ];
       default:

@@ -23,6 +23,7 @@ export default function AdminDashboardPage() {
     totalTrucks: 0,
     suspendedUsers: 0,
   });
+  const [snsEvents, setSnsEvents] = useState<any[]>([]);
 
   // 1. 관리자 세션 체크 및 데이터 수집
   useEffect(() => {
@@ -61,6 +62,16 @@ export default function AdminDashboardPage() {
       totalTrucks: trucks.length,
       suspendedUsers: suspended
     });
+
+    // SNS 이벤트 데이터 로드
+    fetch('/api/admin/sns-tracking')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setSnsEvents(data.data);
+        }
+      })
+      .catch(err => console.error("Failed to load SNS tracking data", err));
   }, [router]);
 
   // 1.5 지도를 실시간으로 변경하는 컨트롤 함수
@@ -133,18 +144,20 @@ export default function AdminDashboardPage() {
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>📢 [영업개시] [한강 꿀닭꼬치]가 <strong>서울시청 광장</strong>에서 영업을 시작했습니다.</span>
-                  <span style={{ color: 'var(--text-muted)' }}>방금 전</span>
-                </div>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>📢 [가입] 새로운 사장님 계정 <code style={{ color: 'var(--primary)' }}>owner_taco</code>가 가입을 완료했습니다.</span>
-                  <span style={{ color: 'var(--text-muted)' }}>10분 전</span>
-                </div>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>📢 [재고소진] [마포 분식 대장]이 잔여 재고를 0으로 설정했습니다. (마커 🔴 변경)</span>
-                  <span style={{ color: 'var(--text-muted)' }}>1시간 전</span>
-                </div>
+                {snsEvents.length > 0 ? (
+                  snsEvents.map((evt: any) => (
+                    <div key={evt.id} style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>📢 [SNS추출] <strong>{evt.location}</strong> - {evt.title}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {new Date(evt.start_date).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    최신 SNS 이벤트 데이터가 없습니다.
+                  </div>
+                )}
               </div>
             </div>
 

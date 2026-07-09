@@ -214,7 +214,7 @@ export default function AdminContentPage() {
           
           <div>
             <h2 style={{ fontSize: '1.75rem', fontWeight: '800', marginBottom: '8px' }}>
-              🎪 통합 행사 및 실시간 기상 상태 관리
+              🎪 행사/이벤트 관리
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               푸드트럭 지도에 노출될 문화 축제 스팟 및 날씨 상태 테이블을 관리자가 실시간 CRUD 제어합니다. (Neon DB 연동)

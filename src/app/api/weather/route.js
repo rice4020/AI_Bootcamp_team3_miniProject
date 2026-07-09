@@ -153,11 +153,10 @@ async function fetchWeatherFromDb(lat, lng) {
 
 // ============================================================
 // 🌤️ GET /api/weather?lat=xx&lng=xx
-// 날씨 데이터 반환 우선순위:
-//   1순위: DB에 저장된 가장 가까운 도시의 최신 날씨 (6시간 이내)
-//   2순위: 기상청 API 직접 호출 (DB 데이터 없거나 오래된 경우)
-//   3순위: Fallback 고정값 (API 키 없거나 모든 호출 실패 시)
-// 응답 형식은 기존과 동일하여 화면 코드 수정 불필요
+// 날씨 데이터 반환 우선순위 (수정됨):
+//   1순위: 기상청 API 실시간 직접 호출
+//   2순위: DB에 저장된 가장 가까운 도시의 최신 날씨 (API 실패 시)
+//   3순위: Fallback 고정값 (모두 실패 시)
 // ============================================================
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -167,7 +166,21 @@ export async function GET(request) {
   const lat = parseFloat(latParam || '37.5665'); // 서울시청 기본값
   const lng = parseFloat(lngParam || '126.9780');
 
-  // ─── 1순위: DB 조회 시도 ─────────────────────────────────
+  // ─── 1순위: 기상청 API 직접 호출 ─────────────────────────
+  const serviceKey = process.env.KOREA_WEATHER_API_KEY;
+
+  if (serviceKey) {
+    try {
+      const kmaWeather = await fetchDirectFromKMA(lat, lng, serviceKey);
+      return NextResponse.json({ success: true, data: kmaWeather });
+    } catch (kmaErr) {
+      console.warn('⚠️ [Weather API] 기상청 직접 호출 실패:', kmaErr.message);
+    }
+  } else {
+    console.warn('⚠️ [Weather API] KOREA_WEATHER_API_KEY 없음 → DB 조회 시도');
+  }
+
+  // ─── 2순위: DB 조회 시도 ─────────────────────────────────
   try {
     const dbWeather = await fetchWeatherFromDb(lat, lng);
     if (dbWeather) {
@@ -177,24 +190,10 @@ export async function GET(request) {
     console.warn('⚠️ [Weather API] DB 조회 중 오류 발생:', dbErr.message);
   }
 
-  // ─── 2순위: 기상청 API 직접 호출 ─────────────────────────
-  const serviceKey = process.env.KOREA_WEATHER_API_KEY;
-
-  if (!serviceKey) {
-    // API 키도 없으면 바로 Fallback 반환
-    console.warn('⚠️ [Weather API] KOREA_WEATHER_API_KEY 없음 → Fallback 반환');
-    return NextResponse.json({ success: true, data: FALLBACK_WEATHER });
-  }
-
-  try {
-    const kmaWeather = await fetchDirectFromKMA(lat, lng, serviceKey);
-    return NextResponse.json({ success: true, data: kmaWeather });
-  } catch (kmaErr) {
-    // ─── 3순위: 최종 Fallback ────────────────────────────────
-    console.warn('⚠️ [Weather API] 기상청 직접 호출도 실패 → Fallback 반환:', kmaErr.message);
-    return NextResponse.json({
-      success: true,
-      data: { ...FALLBACK_WEATHER, debugError: kmaErr.message },
-    });
-  }
+  // ─── 3순위: 최종 Fallback ────────────────────────────────
+  console.warn('⚠️ [Weather API] 모든 호출 실패 → Fallback 반환');
+  return NextResponse.json({
+    success: true,
+    data: { ...FALLBACK_WEATHER, debugError: '기상청 API 및 DB 조회 모두 실패' },
+  });
 }
